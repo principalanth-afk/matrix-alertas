@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#12141A"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/app_name"
+            android:textColor="#E6E8EF"
+            android:textSize="24sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/subtitulo"
+            android:textColor="#9AA2B8"
+            android:textSize="13sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
+            android:text="@string/etiqueta_canal"
+            android:textColor="#9AA2B8"
+            android:textSize="12sp" />
+
+        <EditText
+            android:id="@+id/campo_canal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:autofillHints=""
+            android:background="#1B1E26"
+            android:hint="@string/pista_canal"
+            android:inputType="text"
+            android:padding="14dp"
+            android:textColor="#E6E8EF"
+            android:textColorHint="#5A6176"
+            android:textSize="15sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:text="@string/etiqueta_servidor"
+            android:textColor="#9AA2B8"
+            android:textSize="12sp" />
+
+        <EditText
+            android:id="@+id/campo_servidor"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:autofillHints=""
+            android:background="#1B1E26"
+            android:inputType="textUri"
+            android:padding="14dp"
+            android:textColor="#E6E8EF"
+            android:textColorHint="#5A6176"
+            android:textSize="15sp" />
+
+        <Button
+            android:id="@+id/boton_encender"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:backgroundTint="#3ECF8E"
+            android:text="@string/encender"
+            android:textColor="#0A1F16"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/boton_probar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:backgroundTint="#272B36"
+            android:text="@string/probar"
+            android:textColor="#E6E8EF" />
+
+        <TextView
+            android:id="@+id/estado"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:background="#1B1E26"
+            android:fontFamily="monospace"
+            android:padding="14dp"
+            android:textColor="#E6E8EF"
+            android:textSize="13sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
+            android:text="@string/titulo_permisos"
+            android:textColor="#E6E8EF"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="@string/explica_permisos"
+            android:textColor="#9AA2B8"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/boton_notificaciones"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:backgroundTint="#272B36"
+            android:text="@string/permiso_notificaciones"
+            android:textColor="#E6E8EF" />
+
+        <Button
+            android:id="@+id/boton_superponer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:backgroundTint="#272B36"
+            android:text="@string/permiso_superponer"
+            android:textColor="#E6E8EF" />
+
+        <Button
+            android:id="@+id/boton_pantalla_completa"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:backgroundTint="#272B36"
+            android:text="@string/permiso_pantalla_completa"
+            android:textColor="#E6E8EF" />
+
+        <Button
+            android:id="@+id/boton_bateria"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:backgroundTint="#272B36"
+            android:text="@string/permiso_bateria"
+            android:textColor="#E6E8EF" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:layout_marginBottom="24dp"
+            android:text="@string/nota_final"
+            android:textColor="#5A6176"
+            android:textSize="11sp" />
+
+    </LinearLayout>
+</ScrollView>
