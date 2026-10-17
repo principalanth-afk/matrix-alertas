@@ -1,0 +1,48 @@
+name: Compilar APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preparar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Preparar Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Compilar
+        working-directory: android
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Renombrar
+        run: |
+          mkdir -p salida
+          cp android/app/build/outputs/apk/debug/app-debug.apk salida/MATRIX-Alertas.apk
+
+      - name: Guardar como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: MATRIX-Alertas-APK
+          path: salida/MATRIX-Alertas.apk
+
+      - name: Publicar para descargar desde el celular
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_number }}
+          name: MATRIX Alertas v${{ github.run_number }}
+          files: salida/MATRIX-Alertas.apk
