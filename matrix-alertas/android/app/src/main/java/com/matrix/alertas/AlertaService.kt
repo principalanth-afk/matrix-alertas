@@ -1,5 +1,6 @@
 package com.matrix.alertas
 
+import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -36,6 +37,8 @@ class AlertaService : Service() {
         private const val TAG = "MatrixAlertas"
 
         const val ACCION_PARAR = "com.matrix.alertas.PARAR"
+        /** Título reservado: marca el mensaje que trae la lista del día. */
+        const val TITULO_ESTADO = "__ESTADO__"
 
         /** Para que la pantalla principal pueda mostrar si está conectado. */
         @Volatile
@@ -44,11 +47,21 @@ class AlertaService : Service() {
         @Volatile
         var corriendo: Boolean = false
 
+        /** Cada cuánto comprueba el vigía que el servicio sigue vivo. */
+        private const val VIGIA_MS = 10 * 60 * 1000L
+
         fun arrancar(ctx: Context) {
             val i = Intent(ctx, AlertaService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ctx.startForegroundService(i)
             else ctx.startService(i)
         }
+
+        private fun avisoVigia(ctx: Context, codigo: Int): PendingIntent =
+            PendingIntent.getBroadcast(
+                ctx, codigo,
+                Intent(ctx, BootReceiver::class.java).setAction(BootReceiver.ACCION_REVIVIR),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
 
         fun parar(ctx: Context) {
             ctx.startService(Intent(ctx, AlertaService::class.java).setAction(ACCION_PARAR))
@@ -126,8 +139,45 @@ class AlertaService : Service() {
             seguir = true
             hilo = Thread { escuchar() }.also { it.isDaemon = true; it.start() }
         }
+        programarVigia()
         // START_STICKY: si Android mata el servicio por memoria, lo vuelve a levantar.
         return START_STICKY
+    }
+
+    /**
+     * En muchos teléfonos (sobre todo Xiaomi, Oppo, Vivo, Huawei) deslizar la
+     * app fuera de "recientes" mata el servicio aunque esté en primer plano.
+     * Aquí se pide que lo revivan en dos segundos.
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        if (encendido) {
+            runCatching {
+                getSystemService(AlarmManager::class.java).set(
+                    AlarmManager.RTC_WAKEUP,
+                    System.currentTimeMillis() + 2_000,
+                    avisoVigia(this, 98)
+                )
+            }
+        }
+        super.onTaskRemoved(rootIntent)
+    }
+
+    /** Comprobación periódica: si el servicio se cayó, se vuelve a levantar solo. */
+    private fun programarVigia() {
+        runCatching {
+            getSystemService(AlarmManager::class.java).setInexactRepeating(
+                AlarmManager.RTC_WAKEUP,
+                System.currentTimeMillis() + VIGIA_MS,
+                VIGIA_MS,
+                avisoVigia(this, 99)
+            )
+        }
+    }
+
+    private fun cancelarVigia() {
+        runCatching {
+            getSystemService(AlarmManager::class.java).cancel(avisoVigia(this, 99))
+        }
     }
 
     override fun onDestroy() {
@@ -136,6 +186,7 @@ class AlertaService : Service() {
     }
 
     private fun pararTodo() {
+        cancelarVigia()
         seguir = false
         conectado = false
         corriendo = false
@@ -213,7 +264,16 @@ class AlertaService : Service() {
                 val titulo = j.optString("title").ifBlank { "MATRIX" }
                 val texto = j.optString("message")
                 val prioridad = j.optInt("priority", 3)
-                if (prioridad >= 4) mostrarAlarma(titulo, texto) else mostrarAviso(titulo, texto)
+                if (titulo == TITULO_ESTADO) {
+                    // No es un aviso: es la lista de partidos del día para la
+                    // pantalla. Se guarda y se le avisa a la pantalla si está abierta.
+                    ultimoEstado = texto
+                    estadoRecibidoEn = System.currentTimeMillis()
+                } else if (prioridad >= 4) {
+                    mostrarAlarma(titulo, texto)
+                } else {
+                    mostrarAviso(titulo, texto)
+                }
             }
             // "open" y "keepalive" solo confirman que la conexión sigue viva.
             "open", "keepalive" -> conectado = true

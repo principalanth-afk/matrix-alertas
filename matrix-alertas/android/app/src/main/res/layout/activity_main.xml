@@ -2,164 +2,224 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#12141A"
+    android:background="#0B0D12"
     android:fillViewport="true">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="20dp">
+        android:paddingStart="16dp"
+        android:paddingTop="18dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="28dp">
+
+        <!-- cabecera -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <View
+                android:layout_width="4dp"
+                android:layout_height="26dp"
+                android:layout_marginEnd="10dp"
+                android:background="#C084FC" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:letterSpacing="0.18"
+                android:text="@string/app_corto"
+                android:textColor="#22D3EE"
+                android:textSize="19sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/reloj"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#22D3EE"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+        </LinearLayout>
 
         <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/app_name"
-            android:textColor="#E6E8EF"
-            android:textSize="24sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="@string/subtitulo"
-            android:textColor="#9AA2B8"
-            android:textSize="13sp" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="22dp"
-            android:text="@string/etiqueta_canal"
-            android:textColor="#9AA2B8"
-            android:textSize="12sp" />
-
-        <EditText
-            android:id="@+id/campo_canal"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:autofillHints=""
-            android:background="#1B1E26"
-            android:hint="@string/pista_canal"
-            android:inputType="text"
-            android:padding="14dp"
-            android:textColor="#E6E8EF"
-            android:textColorHint="#5A6176"
-            android:textSize="15sp" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:text="@string/etiqueta_servidor"
-            android:textColor="#9AA2B8"
-            android:textSize="12sp" />
-
-        <EditText
-            android:id="@+id/campo_servidor"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:autofillHints=""
-            android:background="#1B1E26"
-            android:inputType="textUri"
-            android:padding="14dp"
-            android:textColor="#E6E8EF"
-            android:textColorHint="#5A6176"
-            android:textSize="15sp" />
-
-        <Button
-            android:id="@+id/boton_encender"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:backgroundTint="#3ECF8E"
-            android:text="@string/encender"
-            android:textColor="#0A1F16"
-            android:textSize="16sp"
-            android:textStyle="bold" />
-
-        <Button
-            android:id="@+id/boton_probar"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:backgroundTint="#272B36"
-            android:text="@string/probar"
-            android:textColor="#E6E8EF" />
-
-        <TextView
-            android:id="@+id/estado"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:background="#1B1E26"
-            android:fontFamily="monospace"
-            android:padding="14dp"
-            android:textColor="#E6E8EF"
-            android:textSize="13sp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="22dp"
-            android:text="@string/titulo_permisos"
-            android:textColor="#E6E8EF"
-            android:textSize="15sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:text="@string/explica_permisos"
-            android:textColor="#9AA2B8"
-            android:textSize="12sp" />
-
-        <Button
-            android:id="@+id/boton_notificaciones"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:backgroundTint="#272B36"
-            android:text="@string/permiso_notificaciones"
-            android:textColor="#E6E8EF" />
-
-        <Button
-            android:id="@+id/boton_superponer"
+            android:id="@+id/linea_estado"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
-            android:backgroundTint="#272B36"
-            android:text="@string/permiso_superponer"
-            android:textColor="#E6E8EF" />
+            android:textColor="#7A849E"
+            android:textSize="12sp" />
+
+        <!-- el panel, se arma desde el código -->
+        <LinearLayout
+            android:id="@+id/contenedor"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="vertical" />
 
         <Button
-            android:id="@+id/boton_pantalla_completa"
+            android:id="@+id/boton_ajustes"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:backgroundTint="#272B36"
-            android:text="@string/permiso_pantalla_completa"
-            android:textColor="#E6E8EF" />
+            android:layout_marginTop="20dp"
+            android:backgroundTint="#171A22"
+            android:text="@string/ajustes_abrir"
+            android:textColor="#9AA2B8" />
 
-        <Button
-            android:id="@+id/boton_bateria"
+        <!-- ajustes, plegados -->
+        <LinearLayout
+            android:id="@+id/bloque_ajustes"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:backgroundTint="#272B36"
-            android:text="@string/permiso_bateria"
-            android:textColor="#E6E8EF" />
+            android:orientation="vertical"
+            android:visibility="gone">
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:layout_marginBottom="24dp"
-            android:text="@string/nota_final"
-            android:textColor="#5A6176"
-            android:textSize="11sp" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="@string/etiqueta_canal"
+                android:textColor="#7A849E"
+                android:textSize="12sp" />
+
+            <EditText
+                android:id="@+id/campo_canal"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:autofillHints=""
+                android:background="#171A22"
+                android:hint="@string/pista_canal"
+                android:inputType="text"
+                android:padding="14dp"
+                android:textColor="#E6E8EF"
+                android:textColorHint="#4A5268"
+                android:textSize="15sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="@string/etiqueta_servidor"
+                android:textColor="#7A849E"
+                android:textSize="12sp" />
+
+            <EditText
+                android:id="@+id/campo_servidor"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:autofillHints=""
+                android:background="#171A22"
+                android:inputType="textUri"
+                android:padding="14dp"
+                android:textColor="#E6E8EF"
+                android:textColorHint="#4A5268"
+                android:textSize="15sp" />
+
+            <Button
+                android:id="@+id/boton_encender"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:backgroundTint="#3ECF8E"
+                android:text="@string/encender"
+                android:textColor="#06231A"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/boton_probar"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:backgroundTint="#171A22"
+                android:text="@string/probar"
+                android:textColor="#E6E8EF" />
+
+            <TextView
+                android:id="@+id/estado"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:background="#171A22"
+                android:fontFamily="monospace"
+                android:padding="14dp"
+                android:textColor="#E6E8EF"
+                android:textSize="13sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:text="@string/explica_permisos"
+                android:textColor="#7A849E"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/boton_notificaciones"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:backgroundTint="#171A22"
+                android:text="@string/permiso_notificaciones"
+                android:textColor="#E6E8EF" />
+
+            <Button
+                android:id="@+id/boton_superponer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:backgroundTint="#171A22"
+                android:text="@string/permiso_superponer"
+                android:textColor="#E6E8EF" />
+
+            <Button
+                android:id="@+id/boton_pantalla_completa"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:backgroundTint="#171A22"
+                android:text="@string/permiso_pantalla_completa"
+                android:textColor="#E6E8EF" />
+
+            <Button
+                android:id="@+id/boton_bateria"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:backgroundTint="#171A22"
+                android:text="@string/permiso_bateria"
+                android:textColor="#E6E8EF" />
+
+            <Button
+                android:id="@+id/boton_autoarranque"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:backgroundTint="#171A22"
+                android:text="@string/permiso_autoarranque"
+                android:textColor="#E6E8EF" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="@string/nota_autoarranque"
+                android:textColor="#7A849E"
+                android:textSize="11sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:text="@string/nota_final"
+                android:textColor="#4A5268"
+                android:textSize="11sp" />
+        </LinearLayout>
 
     </LinearLayout>
 </ScrollView>

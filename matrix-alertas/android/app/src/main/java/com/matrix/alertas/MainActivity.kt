@@ -14,6 +14,7 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.widget.Button
 import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -24,12 +25,14 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 /**
- * Pantalla única: pegar el canal, encender, y una lista de permisos con su
- * botón al lado. Cada permiso explica para qué es, porque sin ellos la alarma
- * no se muestra sobre otras aplicaciones.
+ * Una sola pantalla: arriba el panel de partidos del día (lo que manda la PC)
+ * y abajo, plegados, los ajustes y los permisos.
  */
 class MainActivity : AppCompatActivity() {
 
@@ -37,17 +40,24 @@ class MainActivity : AppCompatActivity() {
     private lateinit var campoServidor: EditText
     private lateinit var estado: TextView
     private lateinit var botonEncender: Button
+    private lateinit var contenedor: LinearLayout
+    private lateinit var reloj: TextView
+    private lateinit var lineaEstado: TextView
+    private lateinit var bloqueAjustes: LinearLayout
+    private lateinit var botonAjustes: Button
 
     private val mano = Handler(Looper.getMainLooper())
-    private val refrescar = object : Runnable {
+    private var firmaPintada = ""
+
+    private val latir = object : Runnable {
         override fun run() {
-            pintarEstado()
-            mano.postDelayed(this, 1_500)
+            refrescar()
+            mano.postDelayed(this, 1_000)
         }
     }
 
     private val pedirNotificaciones =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { pintarEstado() }
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { firmaPintada = "" }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -58,9 +68,19 @@ class MainActivity : AppCompatActivity() {
         campoServidor = findViewById(R.id.campo_servidor)
         estado = findViewById(R.id.estado)
         botonEncender = findViewById(R.id.boton_encender)
+        contenedor = findViewById(R.id.contenedor)
+        reloj = findViewById(R.id.reloj)
+        lineaEstado = findViewById(R.id.linea_estado)
+        bloqueAjustes = findViewById(R.id.bloque_ajustes)
+        botonAjustes = findViewById(R.id.boton_ajustes)
 
         campoCanal.setText(canal)
         campoServidor.setText(servidor)
+
+        // Si todavía no hay canal, los ajustes se abren solos: es lo primero que hace falta.
+        if (canal.isBlank()) alternarAjustes(true)
+
+        botonAjustes.setOnClickListener { alternarAjustes(bloqueAjustes.visibility != android.view.View.VISIBLE) }
 
         botonEncender.setOnClickListener {
             if (AlertaService.corriendo) {
@@ -75,7 +95,7 @@ class MainActivity : AppCompatActivity() {
                 servidor = campoServidor.text.toString()
                 AlertaService.arrancar(this)
             }
-            mano.postDelayed({ pintarEstado() }, 400)
+            mano.postDelayed({ firmaPintada = ""; refrescar() }, 400)
         }
 
         findViewById<Button>(R.id.boton_probar).setOnClickListener { probar() }
@@ -87,63 +107,169 @@ class MainActivity : AppCompatActivity() {
                 abrirAjustesApp()
             }
         }
-
         findViewById<Button>(R.id.boton_superponer).setOnClickListener {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                abrir(
-                    Intent(
-                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                        Uri.parse("package:$packageName")
-                    )
-                )
+                abrir(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
             }
         }
-
         findViewById<Button>(R.id.boton_pantalla_completa).setOnClickListener {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                abrir(
-                    Intent(
-                        Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
-                        Uri.parse("package:$packageName")
-                    )
-                )
+                abrir(Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:$packageName")))
             } else {
                 aviso("Tu versión de Android no necesita este permiso")
             }
         }
-
         findViewById<Button>(R.id.boton_bateria).setOnClickListener {
             abrir(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
         }
+        findViewById<Button>(R.id.boton_autoarranque).setOnClickListener { abrirAutoarranque() }
     }
 
     override fun onResume() {
         super.onResume()
-        mano.post(refrescar)
+        firmaPintada = ""
+        mano.post(latir)
     }
 
     override fun onPause() {
-        mano.removeCallbacks(refrescar)
+        mano.removeCallbacks(latir)
         super.onPause()
     }
 
-    // ------------------------------------------------------------------ estado
+    private fun alternarAjustes(abrir: Boolean) {
+        bloqueAjustes.visibility = if (abrir) android.view.View.VISIBLE else android.view.View.GONE
+        botonAjustes.text = getString(if (abrir) R.string.ajustes_cerrar else R.string.ajustes_abrir)
+        if (abrir) firmaPintada = ""
+    }
 
-    private fun pintarEstado() {
-        val lineas = StringBuilder()
-        lineas.append(
+    // ------------------------------------------------------------- el panel
+
+    private fun refrescar() {
+        val ahora = minutosDeAhora()
+        reloj.text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+
+        val crudo = ultimoEstado
+        // Solo se vuelve a dibujar si cambió el resumen o pasó un minuto.
+        val firma = "$crudo|$ahora|${AlertaService.corriendo}|${AlertaService.conectado}"
+        if (firma == firmaPintada) return
+        firmaPintada = firma
+
+        lineaEstado.text = lineaDeEstado()
+        if (bloqueAjustes.visibility == android.view.View.VISIBLE) pintarAjustes()
+
+        contenedor.removeAllViews()
+        val dia = parsearEstado(crudo)
+        if (dia == null) {
+            contenedor.addView(Panel.aviso(
+                this,
+                if (canal.isBlank())
+                    "Pega el canal en Ajustes y enciende. En cuanto la PC mande el resumen, aquí salen los partidos del día."
+                else
+                    "Esperando el primer resumen de la PC.\n\nLlega solo cada pocos minutos mientras el vigilante esté corriendo en la computadora.",
+                Panel.SUAVE
+            ))
+            return
+        }
+
+        val duracion = 115
+        val enCurso = ArrayList<Pair<Partido, Int>>()
+        val porJugar = ArrayList<Pair<Partido, Int>>()
+        val esperando = ArrayList<Pair<Partido, Int>>()
+        val listos = ArrayList<Partido>()
+        val susp = ArrayList<Partido>()
+
+        for (p in dia.partidos) {
+            when (situacionDe(p, ahora, duracion)) {
+                Situacion.EN_CURSO -> enCurso.add(p to (ahora - p.inicioMin))
+                Situacion.POR_JUGAR -> porJugar.add(p to (p.inicioMin - ahora).coerceAtLeast(0))
+                Situacion.ESPERANDO -> esperando.add(p to (ahora - p.finMin(duracion)))
+                Situacion.LISTO -> listos.add(p)
+                Situacion.SUSPENDIDO -> susp.add(p)
+            }
+        }
+        enCurso.sortByDescending { it.second }
+        porJugar.sortBy { it.second }
+        esperando.sortByDescending { it.second }
+
+        contenedor.addView(Panel.seccion(this, "EN VIVO",
+            if (enCurso.isEmpty()) "ninguno" else "${enCurso.size}",
+            if (enCurso.isEmpty()) Panel.TENUE else Panel.ROJO))
+        if (enCurso.isEmpty()) {
+            contenedor.addView(Panel.aviso(this, "Nada en juego en este momento."))
+        } else {
+            for ((p, m) in enCurso) contenedor.addView(Panel.filaEnCurso(this, p, m, duracion))
+        }
+
+        contenedor.addView(Panel.seccion(this, "VIENEN HOY",
+            if (porJugar.isEmpty()) "ninguno" else "${porJugar.size}",
+            if (porJugar.isEmpty()) Panel.TENUE else Panel.CIAN))
+        if (porJugar.isEmpty()) {
+            contenedor.addView(Panel.aviso(this, "Ya salieron todos los de hoy."))
+        } else {
+            for ((p, f) in porJugar) contenedor.addView(Panel.filaPorJugar(this, p, f))
+        }
+
+        if (esperando.isNotEmpty()) {
+            contenedor.addView(Panel.seccion(this, "ESPERANDO RESULTADO", "${esperando.size}", Panel.MAGENTA))
+            for ((p, d) in esperando) contenedor.addView(Panel.filaEsperando(this, p, duracion, d))
+        }
+
+        if (listos.isNotEmpty()) {
+            val unders = listos.count { it.esUnder }
+            contenedor.addView(Panel.seccion(
+                this, "FINALIZADOS",
+                "$unders/${listos.size} under", Panel.VERDE
+            ))
+            for (p in listos) contenedor.addView(Panel.filaFinal(this, p))
+        }
+
+        if (susp.isNotEmpty()) {
+            contenedor.addView(Panel.seccion(this, "SUSPENDIDOS", "${susp.size}", Panel.MAGENTA))
+            for (p in susp) contenedor.addView(Panel.filaSuspendido(this, p))
+        }
+
+        contenedor.addView(Panel.aviso(
+            this,
+            "Resumen de la PC de las ${dia.enviado} · ${dia.fecha}\n" +
+                    "El minuto es estimado por la hora de inicio, no es un marcador en vivo."
+        ))
+    }
+
+    private fun lineaDeEstado(): String {
+        val conexion = when {
+            !AlertaService.corriendo -> "apagado"
+            AlertaService.conectado -> "conectado"
+            else -> "reconectando…"
+        }
+        val recibido = estadoRecibidoEn
+        val edad = if (recibido == 0L) "sin datos todavía" else {
+            val min = ((System.currentTimeMillis() - recibido) / 60000L).toInt()
+            when {
+                min < 2 -> "actualizado ahora"
+                min < 60 -> "actualizado hace $min min"
+                else -> "actualizado hace ${min / 60} h"
+            }
+        }
+        return "$conexion · $edad"
+    }
+
+    // ------------------------------------------------------------- ajustes
+
+    private fun pintarAjustes() {
+        val l = StringBuilder()
+        l.append(
             when {
                 !AlertaService.corriendo -> "● Apagado\n"
                 AlertaService.conectado -> "● Conectado: esperando avisos de la PC\n"
                 else -> "● Encendido, reconectando…\n"
             }
         )
-        lineas.append("\nPermisos:\n")
-        lineas.append(marca(notificacionesOk()) + " Notificaciones\n")
-        lineas.append(marca(superponerOk()) + " Mostrar sobre otras apps\n")
-        lineas.append(marca(pantallaCompletaOk()) + " Alarma a pantalla completa\n")
-        lineas.append(marca(bateriaOk()) + " Sin ahorro de batería\n")
-        estado.text = lineas.toString()
+        l.append("\nPermisos:\n")
+        l.append(marca(notificacionesOk()) + " Notificaciones\n")
+        l.append(marca(superponerOk()) + " Mostrar sobre otras apps\n")
+        l.append(marca(pantallaCompletaOk()) + " Alarma a pantalla completa\n")
+        l.append(marca(bateriaOk()) + " Sin ahorro de batería\n")
+        estado.text = l.toString()
         botonEncender.text = if (AlertaService.corriendo) "APAGAR" else "ENCENDER"
     }
 
@@ -166,9 +292,6 @@ class MainActivity : AppCompatActivity() {
         (getSystemService(Context.POWER_SERVICE) as PowerManager)
             .isIgnoringBatteryOptimizations(packageName)
 
-    // ------------------------------------------------------------------ probar
-
-    /** Se manda un aviso a uno mismo por el canal, para ver la alarma de verdad. */
     private fun probar() {
         val c = campoCanal.text.toString().trim()
         if (c.isBlank()) {
@@ -188,13 +311,11 @@ class MainActivity : AppCompatActivity() {
 
         Thread {
             val ok = runCatching {
-                val cliente = OkHttpClient.Builder()
-                    .callTimeout(20, TimeUnit.SECONDS).build()
-                val peticion = Request.Builder()
-                    .url(servidor)
-                    .post(cuerpo.toRequestBody("application/json".toMediaType()))
-                    .build()
-                cliente.newCall(peticion).execute().use { it.isSuccessful }
+                OkHttpClient.Builder().callTimeout(20, TimeUnit.SECONDS).build()
+                    .newCall(
+                        Request.Builder().url(servidor)
+                            .post(cuerpo.toRequestBody("application/json".toMediaType())).build()
+                    ).execute().use { it.isSuccessful }
             }.getOrDefault(false)
             mano.post {
                 aviso(if (ok) "Aviso enviado, debe sonar en unos segundos" else "No se pudo enviar: revisa internet")
@@ -202,7 +323,33 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
-    // ------------------------------------------------------------------ varios
+    private fun abrirAutoarranque() {
+        val candidatos = listOf(
+            "com.miui.securitycenter" to "com.miui.permcenter.autostart.AutoStartManagementActivity",
+            "com.letv.android.letvsafe" to "com.letv.android.letvsafe.AutobootManageActivity",
+            "com.huawei.systemmanager" to "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity",
+            "com.huawei.systemmanager" to "com.huawei.systemmanager.optimize.process.ProtectActivity",
+            "com.coloros.safecenter" to "com.coloros.safecenter.permission.startup.StartupAppListActivity",
+            "com.coloros.safecenter" to "com.coloros.safecenter.startupapp.StartupAppListActivity",
+            "com.oppo.safe" to "com.oppo.safe.permission.startup.StartupAppListActivity",
+            "com.vivo.permissionmanager" to "com.vivo.permissionmanager.activity.BgStartUpManagerActivity",
+            "com.iqoo.secure" to "com.iqoo.secure.ui.phoneoptimize.AddWhiteListActivity",
+            "com.asus.mobilemanager" to "com.asus.mobilemanager.autostart.AutoStartActivity",
+            "com.samsung.android.lool" to "com.samsung.android.sm.battery.ui.BatteryActivity",
+            "com.transsion.phonemaster" to "com.cyin.himgr.autostart.AutoStartActivity"
+        )
+        for ((paquete, clase) in candidatos) {
+            val i = Intent().setClassName(paquete, clase).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (packageManager.resolveActivity(i, 0) != null &&
+                runCatching { startActivity(i) }.isSuccess
+            ) {
+                aviso("Busca MATRIX Alertas en la lista y actívalo")
+                return
+            }
+        }
+        aviso("Tu teléfono no tiene esa pantalla; se abre la ficha de la app")
+        abrirAjustesApp()
+    }
 
     private fun abrir(i: Intent) {
         runCatching { startActivity(i) }.onFailure { abrirAjustesApp() }
@@ -211,10 +358,7 @@ class MainActivity : AppCompatActivity() {
     private fun abrirAjustesApp() {
         runCatching {
             startActivity(
-                Intent(
-                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                    Uri.parse("package:$packageName")
-                )
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))
             )
         }
     }
