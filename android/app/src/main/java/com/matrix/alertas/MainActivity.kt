@@ -115,6 +115,42 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.boton_bateria).setOnClickListener {
             abrir(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
         }
+
+        findViewById<Button>(R.id.boton_autoarranque).setOnClickListener { abrirAutoarranque() }
+    }
+
+    /**
+     * Cada marca esconde el "inicio automático" en su propia pantalla, y no hay
+     * forma estándar de abrirla. Se prueban las conocidas y, si ninguna existe,
+     * se abre la ficha de la app para que lo busque a mano.
+     */
+    private fun abrirAutoarranque() {
+        val candidatos = listOf(
+            "com.miui.securitycenter" to "com.miui.permcenter.autostart.AutoStartManagementActivity",
+            "com.letv.android.letvsafe" to "com.letv.android.letvsafe.AutobootManageActivity",
+            "com.huawei.systemmanager" to "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity",
+            "com.huawei.systemmanager" to "com.huawei.systemmanager.optimize.process.ProtectActivity",
+            "com.coloros.safecenter" to "com.coloros.safecenter.permission.startup.StartupAppListActivity",
+            "com.coloros.safecenter" to "com.coloros.safecenter.startupapp.StartupAppListActivity",
+            "com.oppo.safe" to "com.oppo.safe.permission.startup.StartupAppListActivity",
+            "com.vivo.permissionmanager" to "com.vivo.permissionmanager.activity.BgStartUpManagerActivity",
+            "com.iqoo.secure" to "com.iqoo.secure.ui.phoneoptimize.AddWhiteListActivity",
+            "com.asus.mobilemanager" to "com.asus.mobilemanager.autostart.AutoStartActivity",
+            "com.samsung.android.lool" to "com.samsung.android.sm.battery.ui.BatteryActivity",
+            "com.transsion.phonemaster" to "com.cyin.himgr.autostart.AutoStartActivity"
+        )
+        for ((paquete, clase) in candidatos) {
+            val i = Intent().setClassName(paquete, clase)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (packageManager.resolveActivity(i, 0) != null) {
+                if (runCatching { startActivity(i) }.isSuccess) {
+                    aviso("Busca MATRIX Alertas en la lista y actívalo")
+                    return
+                }
+            }
+        }
+        aviso("Tu teléfono no tiene esa pantalla; se abre la ficha de la app")
+        abrirAjustesApp()
     }
 
     override fun onResume() {

@@ -16,6 +16,8 @@
     <string name="permiso_superponer">2 · Mostrar sobre otras apps</string>
     <string name="permiso_pantalla_completa">3 · Alarma a pantalla completa</string>
     <string name="permiso_bateria">4 · Quitar el ahorro de batería</string>
+    <string name="permiso_autoarranque">5 · Inicio automático (Xiaomi, Oppo, Vivo, Huawei)</string>
+    <string name="nota_autoarranque">Si al deslizar la app fuera de «recientes» dejan de llegar los avisos, es este. Busca MATRIX Alertas en la lista y actívalo.</string>
 
     <string name="nota_final">El aviso suena con el tono de alarma del teléfono y se corta solo a los 2 minutos. La app solo escucha: los partidos y los resultados salen del Excel de tu PC.</string>
 

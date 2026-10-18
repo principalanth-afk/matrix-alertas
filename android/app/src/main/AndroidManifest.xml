@@ -45,9 +45,12 @@
             android:taskAffinity=".alarma"
             android:theme="@style/Tema.Matrix.Alarma" />
 
+        <!-- stopWithTask=false: si deslizas la app fuera de "recientes", el
+             servicio NO se cae con ella y sigue escuchando los avisos. -->
         <service
             android:name=".AlertaService"
             android:exported="false"
+            android:stopWithTask="false"
             android:foregroundServiceType="dataSync" />
 
         <receiver

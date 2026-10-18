@@ -152,6 +152,23 @@
             android:text="@string/permiso_bateria"
             android:textColor="#E6E8EF" />
 
+        <Button
+            android:id="@+id/boton_autoarranque"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:backgroundTint="#272B36"
+            android:text="@string/permiso_autoarranque"
+            android:textColor="#E6E8EF" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/nota_autoarranque"
+            android:textColor="#9AA2B8"
+            android:textSize="11sp" />
+
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
