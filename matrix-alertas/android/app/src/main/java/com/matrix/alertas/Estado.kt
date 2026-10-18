@@ -7,16 +7,29 @@ data class Partido(
     val nombre: String,
     val competicion: String,
     val inicioMin: Int,          // minutos desde medianoche; -1 si no trae hora
-    val gl: Int?,
+    val gl: Int?,                // del Excel: lo que tú cargas, el registro oficial
     val gv: Int?,
-    val suspendido: Boolean
+    val suspendido: Boolean,
+    val vivoGl: Int? = null,     // del marcador en vivo, solo para mirar
+    val vivoGv: Int? = null,
+    val vivoEstado: String = "", // vivo · descanso · fin · suspendido · "" (sin dato)
+    val vivoMinuto: Int? = null
 ) {
+    val hayVivo: Boolean get() = vivoGl != null && vivoGv != null && vivoEstado.isNotEmpty()
+
+    /** El marcador a mostrar: el del Excel si ya está, si no el de en vivo. */
+    val marcadorGl: Int? get() = gl ?: vivoGl
+    val marcadorGv: Int? get() = gv ?: vivoGv
+
+    /** true si el marcador que se muestra viene del vivo y el Excel aún no lo tiene. */
+    val soloVivo: Boolean get() = gl == null && vivoGl != null
+
     val hora: String
         get() = if (inicioMin < 0) "--:--"
         else String.format("%02d:%02d", inicioMin / 60, inicioMin % 60)
 
     val tieneResultado: Boolean get() = gl != null && gv != null
-    val total: Int get() = (gl ?: 0) + (gv ?: 0)
+    val total: Int get() = (marcadorGl ?: 0) + (marcadorGv ?: 0)
     val esUnder: Boolean get() = total <= 2
 
     /** Hora a la que debería terminar, en minutos desde medianoche. */
@@ -34,8 +47,13 @@ data class EstadoDia(
 enum class Situacion { EN_CURSO, POR_JUGAR, ESPERANDO, LISTO, SUSPENDIDO }
 
 fun situacionDe(p: Partido, ahoraMin: Int, duracion: Int): Situacion = when {
-    p.suspendido -> Situacion.SUSPENDIDO
+    p.suspendido || p.vivoEstado == "suspendido" -> Situacion.SUSPENDIDO
     p.tieneResultado -> Situacion.LISTO
+    // El marcador en vivo manda sobre el reloj estimado: si dice que terminó,
+    // va a finalizados aunque el Excel todavía no lo tenga; si dice que sigue
+    // en juego, se queda en vivo aunque ya hayan pasado los 115 minutos.
+    p.vivoEstado == "fin" -> Situacion.LISTO
+    p.vivoEstado == "vivo" || p.vivoEstado == "descanso" -> Situacion.EN_CURSO
     p.inicioMin < 0 -> Situacion.POR_JUGAR
     ahoraMin < p.inicioMin -> Situacion.POR_JUGAR
     ahoraMin <= p.inicioMin + duracion -> Situacion.EN_CURSO
@@ -62,7 +80,8 @@ fun parsearEstado(texto: String?): EstadoDia? {
     if (lineas.isEmpty()) return null
 
     val cab = lineas[0].split("|")
-    if (cab.size < 3 || cab[0] != "MATRIX1") return null
+    // MATRIX1 fue el formato sin marcador en vivo; se sigue aceptando.
+    if (cab.size < 3 || (cab[0] != "MATRIX2" && cab[0] != "MATRIX1")) return null
 
     val partidos = ArrayList<Partido>()
     for (i in 1 until lineas.size) {
@@ -82,7 +101,11 @@ fun parsearEstado(texto: String?): EstadoDia? {
                 inicioMin = min,
                 gl = c[1].toIntOrNull(),
                 gv = c[2].toIntOrNull(),
-                suspendido = c[3] == "1"
+                suspendido = c[3] == "1",
+                vivoGl = c.getOrNull(6)?.toIntOrNull(),
+                vivoGv = c.getOrNull(7)?.toIntOrNull(),
+                vivoEstado = c.getOrNull(8).orEmpty(),
+                vivoMinuto = c.getOrNull(9)?.toIntOrNull()
             )
         )
     }

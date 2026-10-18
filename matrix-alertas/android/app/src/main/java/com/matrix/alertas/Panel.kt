@@ -126,17 +126,30 @@ object Panel {
             jugados > 60 -> AMBAR
             else -> VERDE
         }
+        // Si el minuto viene del marcador en vivo, se usa ese en vez del estimado.
+        val etiqueta = if (p.vivoMinuto != null && p.vivoEstado == "vivo") "${p.vivoMinuto}'"
+        else if (p.vivoEstado == "descanso") "DESC" else reloj
         return fila(c).apply {
             addView(barra(c, jugados, duracion, color))
-            addView(pastilla(c, reloj, color, 0xFF0B0D12.toInt()).apply {
+            addView(pastilla(c, etiqueta, color, 0xFF0B0D12.toInt()).apply {
                 layoutParams = LinearLayout.LayoutParams(dp(c, 46), ViewGroup.LayoutParams.WRAP_CONTENT)
-                    .apply { marginEnd = dp(c, 9) }
+                    .apply { marginEnd = dp(c, 8) }
             })
+            if (p.hayVivo) {
+                // El marcador de verdad, mientras se juega.
+                addView(pastilla(c, "${p.vivoGl}-${p.vivoGv}", 0xFF1C2230.toInt(), TEXTO).apply {
+                    layoutParams = LinearLayout.LayoutParams(dp(c, 42), ViewGroup.LayoutParams.WRAP_CONTENT)
+                        .apply { marginEnd = dp(c, 9) }
+                })
+            }
             addView(LinearLayout(c).apply {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                 addView(texto(c, p.nombre, 13.5f, TEXTO))
-                addView(texto(c, "${p.hora} → ${finTexto(p, duracion)}   ${p.competicion}", 11f, TENUE))
+                val pie = if (p.hayVivo)
+                    "${p.hora}   ${if (p.total <= 2) "va Under 2.5" else "ya es Over 2.5"}   ${p.competicion}"
+                else "${p.hora} → ${finTexto(p, duracion)}   ${p.competicion}"
+                addView(texto(c, pie, 11f, if (p.hayVivo && p.total > 2) ROJO else TENUE))
             })
         }
     }
@@ -179,7 +192,8 @@ object Panel {
     /** Fila de un partido con marcador. */
     fun filaFinal(c: Context, p: Partido): View = fila(c).apply {
         val under = p.esUnder
-        addView(pastilla(c, "${p.gl}-${p.gv}", 0xFF1C2230.toInt(), if (under) VERDE else ROJO).apply {
+        addView(pastilla(c, "${p.marcadorGl}-${p.marcadorGv}", 0xFF1C2230.toInt(),
+            if (under) VERDE else ROJO).apply {
             layoutParams = LinearLayout.LayoutParams(dp(c, 46), ViewGroup.LayoutParams.WRAP_CONTENT)
                 .apply { marginEnd = dp(c, 8) }
         })
@@ -195,7 +209,10 @@ object Panel {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             addView(texto(c, p.nombre, 13.5f, TEXTO))
-            addView(texto(c, "${p.hora}   ${p.competicion}", 11f, TENUE))
+            // "sin cargar" avisa que el marcador es del vivo y el Excel todavía no lo tiene.
+            val pie = if (p.soloVivo) "${p.hora}   sin cargar en el Excel   ${p.competicion}"
+            else "${p.hora}   ${p.competicion}"
+            addView(texto(c, pie, 11f, if (p.soloVivo) AMBAR else TENUE))
         })
     }
 
