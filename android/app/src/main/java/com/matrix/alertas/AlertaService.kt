@@ -37,6 +37,8 @@ class AlertaService : Service() {
         private const val TAG = "MatrixAlertas"
 
         const val ACCION_PARAR = "com.matrix.alertas.PARAR"
+        /** Título reservado: marca el mensaje que trae la lista del día. */
+        const val TITULO_ESTADO = "__ESTADO__"
 
         /** Para que la pantalla principal pueda mostrar si está conectado. */
         @Volatile
@@ -262,7 +264,16 @@ class AlertaService : Service() {
                 val titulo = j.optString("title").ifBlank { "MATRIX" }
                 val texto = j.optString("message")
                 val prioridad = j.optInt("priority", 3)
-                if (prioridad >= 4) mostrarAlarma(titulo, texto) else mostrarAviso(titulo, texto)
+                if (titulo == TITULO_ESTADO) {
+                    // No es un aviso: es la lista de partidos del día para la
+                    // pantalla. Se guarda y se le avisa a la pantalla si está abierta.
+                    ultimoEstado = texto
+                    estadoRecibidoEn = System.currentTimeMillis()
+                } else if (prioridad >= 4) {
+                    mostrarAlarma(titulo, texto)
+                } else {
+                    mostrarAviso(titulo, texto)
+                }
             }
             // "open" y "keepalive" solo confirman que la conexión sigue viva.
             "open", "keepalive" -> conectado = true

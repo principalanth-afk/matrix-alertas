@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">MATRIX Alertas</string>
+    <string name="app_corto">MATRIX</string>
+    <string name="ajustes_abrir">Ajustes y permisos</string>
+    <string name="ajustes_cerrar">Ocultar ajustes</string>
     <string name="subtitulo">Avisos de los partidos del día que manda tu PC</string>
 
     <string name="etiqueta_canal">Canal privado (lo genera el vigilante de la PC)</string>

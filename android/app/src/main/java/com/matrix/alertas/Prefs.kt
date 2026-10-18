@@ -36,3 +36,17 @@ var Context.ultimoMensaje: Long
     set(v) {
         prefs().edit().putLong("ultimo", v).apply()
     }
+
+/** Último resumen del día que mandó la PC, para pintarlo al abrir la app. */
+var Context.ultimoEstado: String
+    get() = prefs().getString("estado", "") ?: ""
+    set(v) {
+        prefs().edit().putString("estado", v).apply()
+    }
+
+/** Cuándo llegó ese resumen (para avisar si está viejo). */
+var Context.estadoRecibidoEn: Long
+    get() = prefs().getLong("estado_en", 0L)
+    set(v) {
+        prefs().edit().putLong("estado_en", v).apply()
+    }
