@@ -11,16 +11,34 @@ android {
         applicationId = "com.matrix.alertas"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
+    }
+
+    signingConfigs {
+        // Clave FIJA, guardada en el repositorio. Antes cada compilación en
+        // GitHub usaba una clave de depuración distinta, y Android se niega a
+        // instalar encima una app firmada con otra clave: había que
+        // desinstalar y volver a pegar el canal y dar los permisos. Con esta
+        // clave, las actualizaciones se instalan encima y no se pierde nada.
+        //
+        // No es un secreto que proteja nada: solo sirve para que Android
+        // reconozca que las versiones son de la misma app.
+        create("matrix") {
+            storeFile = rootProject.file("matrix.keystore")
+            storePassword = "matrixalertas"
+            keyAlias = "matrix"
+            keyPassword = "matrixalertas"
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            // Se firma con la clave de depuración para poder instalarlo a mano
-            // desde el celular sin tener que crear un almacén de claves.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("matrix")
+        }
+        debug {
+            signingConfig = signingConfigs.getByName("matrix")
         }
     }
 

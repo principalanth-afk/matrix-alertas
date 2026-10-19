@@ -39,6 +39,7 @@ class AlertaService : Service() {
         const val ACCION_PARAR = "com.matrix.alertas.PARAR"
         /** Título reservado: marca el mensaje que trae la lista del día. */
         const val TITULO_ESTADO = "__ESTADO__"
+        const val TITULO_FICHAS = "__FICHAS__"
 
         /** Para que la pantalla principal pueda mostrar si está conectado. */
         @Volatile
@@ -269,6 +270,10 @@ class AlertaService : Service() {
                     // pantalla. Se guarda y se le avisa a la pantalla si está abierta.
                     ultimoEstado = texto
                     estadoRecibidoEn = System.currentTimeMillis()
+                } else if (titulo == TITULO_FICHAS) {
+                    // Tampoco es un aviso: son las estadísticas que se
+                    // despliegan al tocar un partido. No suena ni se muestra.
+                    ultimasFichas = texto
                 } else if (prioridad >= 4) {
                     mostrarAlarma(titulo, texto)
                 } else {

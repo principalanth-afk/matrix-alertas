@@ -126,17 +126,30 @@ object Panel {
             jugados > 60 -> AMBAR
             else -> VERDE
         }
+        // Si el minuto viene del marcador en vivo, se usa ese en vez del estimado.
+        val etiqueta = if (p.vivoMinuto != null && p.vivoEstado == "vivo") "${p.vivoMinuto}'"
+        else if (p.vivoEstado == "descanso") "DESC" else reloj
         return fila(c).apply {
             addView(barra(c, jugados, duracion, color))
-            addView(pastilla(c, reloj, color, 0xFF0B0D12.toInt()).apply {
+            addView(pastilla(c, etiqueta, color, 0xFF0B0D12.toInt()).apply {
                 layoutParams = LinearLayout.LayoutParams(dp(c, 46), ViewGroup.LayoutParams.WRAP_CONTENT)
-                    .apply { marginEnd = dp(c, 9) }
+                    .apply { marginEnd = dp(c, 8) }
             })
+            if (p.hayVivo) {
+                // El marcador de verdad, mientras se juega.
+                addView(pastilla(c, "${p.vivoGl}-${p.vivoGv}", 0xFF1C2230.toInt(), TEXTO).apply {
+                    layoutParams = LinearLayout.LayoutParams(dp(c, 42), ViewGroup.LayoutParams.WRAP_CONTENT)
+                        .apply { marginEnd = dp(c, 9) }
+                })
+            }
             addView(LinearLayout(c).apply {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                 addView(texto(c, p.nombre, 13.5f, TEXTO))
-                addView(texto(c, "${p.hora} → ${finTexto(p, duracion)}   ${p.competicion}", 11f, TENUE))
+                val pie = if (p.hayVivo)
+                    "${p.hora}   ${if (p.total <= 2) "va Under 2.5" else "ya es Over 2.5"}   ${p.competicion}"
+                else "${p.hora} → ${finTexto(p, duracion)}   ${p.competicion}"
+                addView(texto(c, pie, 11f, if (p.hayVivo && p.total > 2) ROJO else TENUE))
             })
         }
     }
@@ -162,6 +175,20 @@ object Panel {
         }
     }
 
+    /** Fila de un partido de mañana: la hora y cuánto falta, en horas. */
+    fun filaManana(c: Context, p: Partido, falta: Int): View = fila(c).apply {
+        addView(pastilla(c, p.hora, 0xFF241E33.toInt(), MAGENTA).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(c, 56), ViewGroup.LayoutParams.WRAP_CONTENT)
+                .apply { marginEnd = dp(c, 10) }
+        })
+        addView(LinearLayout(c).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            addView(texto(c, p.nombre, 13.5f, TEXTO))
+            addView(texto(c, "en ${faltaTexto(falta)}   ${p.competicion}", 11f, TENUE))
+        })
+    }
+
     /** Fila de un partido que ya terminó pero sigue sin resultado cargado. */
     fun filaEsperando(c: Context, p: Partido, duracion: Int, desde: Int): View = fila(c).apply {
         addView(pastilla(c, "?", 0xFF1C2230.toInt(), MAGENTA).apply {
@@ -179,7 +206,8 @@ object Panel {
     /** Fila de un partido con marcador. */
     fun filaFinal(c: Context, p: Partido): View = fila(c).apply {
         val under = p.esUnder
-        addView(pastilla(c, "${p.gl}-${p.gv}", 0xFF1C2230.toInt(), if (under) VERDE else ROJO).apply {
+        addView(pastilla(c, "${p.marcadorGl}-${p.marcadorGv}", 0xFF1C2230.toInt(),
+            if (under) VERDE else ROJO).apply {
             layoutParams = LinearLayout.LayoutParams(dp(c, 46), ViewGroup.LayoutParams.WRAP_CONTENT)
                 .apply { marginEnd = dp(c, 8) }
         })
@@ -195,7 +223,10 @@ object Panel {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             addView(texto(c, p.nombre, 13.5f, TEXTO))
-            addView(texto(c, "${p.hora}   ${p.competicion}", 11f, TENUE))
+            // "sin cargar" avisa que el marcador es del vivo y el Excel todavía no lo tiene.
+            val pie = if (p.soloVivo) "${p.hora}   sin cargar en el Excel   ${p.competicion}"
+            else "${p.hora}   ${p.competicion}"
+            addView(texto(c, pie, 11f, if (p.soloVivo) AMBAR else TENUE))
         })
     }
 
@@ -208,6 +239,72 @@ object Panel {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
     }
+
+    /** Una línea de la ficha: valor del local, nombre del dato, valor del visitante. */
+    private fun lineaDato(c: Context, nombre: String, local: String, visitante: String,
+                          colorL: Int = TEXTO, colorV: Int = TEXTO): View =
+        LinearLayout(c).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(c, 4), 0, dp(c, 4))
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            addView(texto(c, local, 12.5f, colorL, negrita = true, mono = true).apply {
+                gravity = Gravity.START
+                layoutParams = LinearLayout.LayoutParams(dp(c, 52), ViewGroup.LayoutParams.WRAP_CONTENT)
+            })
+            addView(texto(c, nombre, 11.5f, SUAVE).apply {
+                gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            addView(texto(c, visitante, 12.5f, colorV, negrita = true, mono = true).apply {
+                gravity = Gravity.END
+                layoutParams = LinearLayout.LayoutParams(dp(c, 52), ViewGroup.LayoutParams.WRAP_CONTENT)
+            })
+        }
+
+    /**
+     * El bloque de estadísticas que se abre al tocar un partido.
+     * Las tarjetas van primero, y las rojas en rojo: son las que cambian el juego.
+     */
+    fun bloqueFicha(c: Context, f: Ficha): View = LinearLayout(c).apply {
+        orientation = LinearLayout.VERTICAL
+        background = GradientDrawable().apply {
+            cornerRadius = dp(c, 9).toFloat()
+            setColor(0xFF10141C.toInt())
+        }
+        setPadding(dp(c, 12), dp(c, 10), dp(c, 12), dp(c, 10))
+        layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = dp(c, 8); topMargin = -dp(c, 2) }
+
+        if (f.hayTarjetas) {
+            val rl = f.rojas ?: 0
+            val rv = f.rojasV ?: 0
+            addView(lineaDato(c, "rojas", "$rl", "$rv",
+                if (rl > 0) ROJO else TENUE, if (rv > 0) ROJO else TENUE))
+            addView(lineaDato(c, "amarillas", "${f.amarillas ?: 0}", "${f.amarillasV ?: 0}",
+                AMBAR, AMBAR))
+            addView(lineaDato(c, "córners", "${f.corners ?: 0}", "${f.cornersV ?: 0}"))
+            addView(View(c).apply {
+                setBackgroundColor(0xFF232838.toInt())
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(c, 1)
+                ).apply { topMargin = dp(c, 6); bottomMargin = dp(c, 6) }
+            })
+        }
+        for (d in f.datos) addView(lineaDato(c, d.nombre, d.local, d.visitante))
+        if (!f.hayTarjetas && f.datos.isEmpty()) {
+            addView(texto(c, "Sin estadísticas todavía", 12f, TENUE))
+        }
+    }
+
+    /** Aviso de que ese partido aún no tiene ficha. */
+    fun sinFicha(c: Context): View = texto(c, "Todavía no he leído sus estadísticas", 11.5f, TENUE)
+        .apply {
+            setPadding(dp(c, 12), dp(c, 2), dp(c, 12), dp(c, 10))
+        }
 
     fun aviso(c: Context, t: String, color: Int = TENUE): View =
         texto(c, t, 12f, color).apply {

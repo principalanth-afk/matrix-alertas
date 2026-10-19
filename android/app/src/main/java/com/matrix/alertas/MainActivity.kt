@@ -36,6 +36,9 @@ import java.util.concurrent.TimeUnit
  */
 class MainActivity : AppCompatActivity() {
 
+    /** Partidos cuya ficha está desplegada, por nombre. */
+    private val abiertos = HashSet<String>()
+
     private lateinit var campoCanal: EditText
     private lateinit var campoServidor: EditText
     private lateinit var estado: TextView
@@ -150,7 +153,8 @@ class MainActivity : AppCompatActivity() {
 
         val crudo = ultimoEstado
         // Solo se vuelve a dibujar si cambió el resumen o pasó un minuto.
-        val firma = "$crudo|$ahora|${AlertaService.corriendo}|${AlertaService.conectado}"
+        val crudoFichas = ultimasFichas
+        val firma = "$crudo|$crudoFichas|$ahora|${AlertaService.corriendo}|${AlertaService.conectado}|${abiertos.sorted()}"
         if (firma == firmaPintada) return
         firmaPintada = firma
 
@@ -158,6 +162,7 @@ class MainActivity : AppCompatActivity() {
         if (bloqueAjustes.visibility == android.view.View.VISIBLE) pintarAjustes()
 
         contenedor.removeAllViews()
+        val fichas = parsearFichas(crudoFichas)
         val dia = parsearEstado(crudo)
         if (dia == null) {
             contenedor.addView(Panel.aviso(
@@ -177,8 +182,13 @@ class MainActivity : AppCompatActivity() {
         val esperando = ArrayList<Pair<Partido, Int>>()
         val listos = ArrayList<Partido>()
         val susp = ArrayList<Partido>()
+        val manana = ArrayList<Pair<Partido, Int>>()
 
         for (p in dia.partidos) {
+            if (p.dia > 0) {                       // los de mañana van aparte
+                manana.add(p to faltaPara(p, ahora))
+                continue
+            }
             when (situacionDe(p, ahora, duracion)) {
                 Situacion.EN_CURSO -> enCurso.add(p to (ahora - p.inicioMin))
                 Situacion.POR_JUGAR -> porJugar.add(p to (p.inicioMin - ahora).coerceAtLeast(0))
@@ -190,6 +200,7 @@ class MainActivity : AppCompatActivity() {
         enCurso.sortByDescending { it.second }
         porJugar.sortBy { it.second }
         esperando.sortByDescending { it.second }
+        manana.sortBy { it.second }
 
         contenedor.addView(Panel.seccion(this, "EN VIVO",
             if (enCurso.isEmpty()) "ninguno" else "${enCurso.size}",
@@ -197,7 +208,7 @@ class MainActivity : AppCompatActivity() {
         if (enCurso.isEmpty()) {
             contenedor.addView(Panel.aviso(this, "Nada en juego en este momento."))
         } else {
-            for ((p, m) in enCurso) contenedor.addView(Panel.filaEnCurso(this, p, m, duracion))
+            for ((p, m) in enCurso) agregarConFicha(p, Panel.filaEnCurso(this, p, m, duracion), fichas)
         }
 
         contenedor.addView(Panel.seccion(this, "VIENEN HOY",
@@ -207,6 +218,11 @@ class MainActivity : AppCompatActivity() {
             contenedor.addView(Panel.aviso(this, "Ya salieron todos los de hoy."))
         } else {
             for ((p, f) in porJugar) contenedor.addView(Panel.filaPorJugar(this, p, f))
+        }
+
+        if (manana.isNotEmpty()) {
+            contenedor.addView(Panel.seccion(this, "MAÑANA", "${manana.size}", Panel.MAGENTA))
+            for ((p, f) in manana) contenedor.addView(Panel.filaManana(this, p, f))
         }
 
         if (esperando.isNotEmpty()) {
@@ -220,7 +236,7 @@ class MainActivity : AppCompatActivity() {
                 this, "FINALIZADOS",
                 "$unders/${listos.size} under", Panel.VERDE
             ))
-            for (p in listos) contenedor.addView(Panel.filaFinal(this, p))
+            for (p in listos) agregarConFicha(p, Panel.filaFinal(this, p), fichas)
         }
 
         if (susp.isNotEmpty()) {
@@ -233,6 +249,22 @@ class MainActivity : AppCompatActivity() {
             "Resumen de la PC de las ${dia.enviado} · ${dia.fecha}\n" +
                     "El minuto es estimado por la hora de inicio, no es un marcador en vivo."
         ))
+    }
+
+    /**
+     * Pone la fila y, si está desplegada, el bloque de estadísticas debajo.
+     * Tocar la fila la abre o la cierra.
+     */
+    private fun agregarConFicha(p: Partido, fila: android.view.View, fichas: Map<String, Ficha>) {
+        fila.setOnClickListener {
+            if (!abiertos.remove(p.nombre)) abiertos.add(p.nombre)
+            firmaPintada = ""          // obliga a redibujar en el siguiente tic
+            refrescar()
+        }
+        contenedor.addView(fila)
+        if (!abiertos.contains(p.nombre)) return
+        val f = fichas[p.nombre]
+        contenedor.addView(if (f != null) Panel.bloqueFicha(this, f) else Panel.sinFicha(this))
     }
 
     private fun lineaDeEstado(): String {

@@ -50,3 +50,10 @@ var Context.estadoRecibidoEn: Long
     set(v) {
         prefs().edit().putLong("estado_en", v).apply()
     }
+
+/** Las estadísticas de los partidos en juego, para desplegarlas al tocarlos. */
+var Context.ultimasFichas: String
+    get() = prefs().getString("fichas", "") ?: ""
+    set(v) {
+        prefs().edit().putString("fichas", v).apply()
+    }
