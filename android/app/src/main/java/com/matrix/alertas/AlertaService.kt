@@ -329,6 +329,8 @@ class AlertaService : Service() {
     /** Si el wifi de la casa no contestó, no se vuelve a probar en 2 min (fuera de casa, con datos). */
     private var lanFalloHasta = 0L
     private var ultimaBuena = ""
+    /** Última vez que se recorrió el wifi buscando la PC (se hace como mucho cada 3 min). */
+    private var ultimoBarrido = 0L
 
     private fun pedir(url: String): String? =
         clienteCorto.newCall(Request.Builder().url(url).build()).execute().use { r ->
@@ -367,6 +369,19 @@ class AlertaService : Service() {
                     }
                 }
             }
+            // Sin dirección, o ninguna contestó: si el celular está en un wifi, se busca la PC
+            // en esa red. Así funciona aunque nunca haya llegado el mensaje de ntfy con la dirección.
+            if (!ok && c.isNotBlank() && System.currentTimeMillis() - ultimoBarrido > 180_000L &&
+                Red.ipLocal(this) != null
+            ) {
+                ultimoBarrido = System.currentTimeMillis()
+                val hallada = runCatching { Red.buscarPc(this, c) }.getOrNull()
+                if (hallada != null) {
+                    enlaceLan = hallada
+                    lanFalloHasta = 0L
+                    continue                      // se lee ya, sin esperar
+                }
+            }
             if (!ok) via = ""
             dormir(if (rapido) 5_000 else 15_000)
         }
@@ -378,6 +393,10 @@ class AlertaService : Service() {
         if (!j.has("partidos")) return false
         datosApp = cuerpo
         datosEn = System.currentTimeMillis()
+        // La PC dice su dirección de internet (túnel): se guarda para cuando salgas de la casa.
+        j.optJSONObject("enlaces")?.optString("publico")?.takeIf { it.startsWith("https://") }?.let {
+            if (it != enlacePublico) enlacePublico = it
+        }
 
         val serie = j.optLong("serie", 0L)
         val id = j.optString("id")

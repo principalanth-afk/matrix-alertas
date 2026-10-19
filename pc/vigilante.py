@@ -1182,7 +1182,13 @@ def datos_app(cfg, partidos, vivos, fichas_dia, ahora=None):
             "ficha": ficha,
             "previa": p.get("previa") or [],
         })
-    return {"v": 2, "hoy": f"{hoy:%d/%m/%Y}", "hora": f"{ahora:%H:%M}",
+    try:
+        import enlace
+        e = enlace.enlaces(cfg["puerto_app"])
+        enlaces = {"lan": e.get("lan", ""), "publico": e.get("publico", "")}
+    except ImportError:
+        enlaces = {}
+    return {"v": 2, "enlaces": enlaces, "hoy": f"{hoy:%d/%m/%Y}", "hora": f"{ahora:%H:%M}",
             "generado": ahora.strftime("%Y-%m-%dT%H:%M:%S"), "duracion": cfg["minutos_partido"],
             "partidos": lista}
 
@@ -1566,6 +1572,8 @@ def linea_app(cfg):
         try:
             import enlace
             e = enlace.enlaces(cfg["puerto_app"])
+            if e["lan"]:
+                partes.append("dirección para el celular: " + e["lan"].replace("http://", "").replace(":8782", ""))
             partes.append("túnel: " + (e["publico"].replace("https://", "") if e["publico"]
                                        else (e.get("detalle") or "abriendo…")))
         except ImportError:

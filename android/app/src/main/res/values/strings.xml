@@ -9,6 +9,9 @@
     <string name="etiqueta_canal">Canal privado (lo genera el vigilante de la PC)</string>
     <string name="pista_canal">matrix-xxxxxxxxxxxx</string>
     <string name="etiqueta_servidor">Servidor</string>
+    <string name="etiqueta_pc">Dirección de tu PC en el wifi (sale en la ventana del vigilante). Vacío = la busco sola</string>
+    <string name="pista_pc">192.168.1.20</string>
+    <string name="buscar_pc">BUSCAR MI PC EN EL WIFI</string>
 
     <string name="encender">ENCENDER</string>
     <string name="probar">Mandarme un aviso de prueba</string>
