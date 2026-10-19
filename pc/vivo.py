@@ -92,10 +92,12 @@ PAGINA = """<!doctype html><html lang="es"><head><meta charset="utf-8">
  b{color:#e6e8ef}
 </style></head><body><div class="c">
 <h1>MARCADOR EN VIVO</h1>
-<p>Esta pestaña es la que usa la extensión Scarlet para seguir los partidos
-de hoy en BetMines y mandarle el marcador a tu celular.</p>
+<p>Esta pestaña es la que usa la extensión Scarlet (3.4) para seguir los partidos
+de hoy en BetMines y mandarle el marcador y las estadísticas a tu celular.</p>
 <p><b>Déjala abierta</b> y minimizada. Si la cierras, el marcador en vivo deja
 de actualizarse (las alarmas de inicio y de resultado final siguen igual).</p>
+<p>Las pestañas de los partidos en juego se abren en una <b>ventana aparte,
+minimizada</b>: una por partido, solo mientras se juega. Si la ves, no la cierres.</p>
 <p>Al Excel no se escribe nada desde aquí.</p>
 </div></body></html>"""
 
