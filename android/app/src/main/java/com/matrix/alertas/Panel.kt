@@ -403,7 +403,7 @@ object Panel {
             setPadding(dp(c, 12), dp(c, 2), dp(c, 12), dp(c, 10))
         }
 
-    fun aviso(c: Context, t: String, color: Int = TENUE): View =
+    fun aviso(c: Context, t: String, color: Int = TENUE): TextView =
         texto(c, t, 12f, color).apply {
             maxLines = 4
             setPadding(dp(c, 4), dp(c, 6), dp(c, 4), dp(c, 10))

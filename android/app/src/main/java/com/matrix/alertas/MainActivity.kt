@@ -41,6 +41,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var campoCanal: EditText
     private lateinit var campoServidor: EditText
+    private lateinit var campoPc: EditText
     private lateinit var estado: TextView
     private lateinit var botonEncender: Button
     private lateinit var contenedor: LinearLayout
@@ -69,6 +70,7 @@ class MainActivity : AppCompatActivity() {
 
         campoCanal = findViewById(R.id.campo_canal)
         campoServidor = findViewById(R.id.campo_servidor)
+        campoPc = findViewById(R.id.campo_pc)
         estado = findViewById(R.id.estado)
         botonEncender = findViewById(R.id.boton_encender)
         contenedor = findViewById(R.id.contenedor)
@@ -79,6 +81,8 @@ class MainActivity : AppCompatActivity() {
 
         campoCanal.setText(canal)
         campoServidor.setText(servidor)
+        campoPc.setText(enlaceLan.removePrefix("http://").removeSuffix(":${Red.PUERTO}"))
+        findViewById<Button>(R.id.boton_buscar_pc).setOnClickListener { buscarPc() }
 
         // Si todavía no hay canal, los ajustes se abren solos: es lo primero que hace falta.
         if (canal.isBlank()) alternarAjustes(true)
@@ -96,6 +100,8 @@ class MainActivity : AppCompatActivity() {
                 }
                 canal = c
                 servidor = campoServidor.text.toString()
+                val pc = Red.normalizar(campoPc.text.toString())
+                if (pc.isNotBlank()) enlaceLan = pc
                 AlertaService.arrancar(this)
             }
             mano.postDelayed({ firmaPintada = ""; refrescar() }, 400)
@@ -174,14 +180,26 @@ class MainActivity : AppCompatActivity() {
         val fichas = directo?.fichas ?: parsearFichas(crudoFichas)
         val dia = directo?.dia ?: parsearEstado(crudo)
         if (dia == null) {
-            contenedor.addView(Panel.aviso(
-                this,
-                if (canal.isBlank())
-                    "Pega el canal en Ajustes y enciende. En cuanto la PC mande el resumen, aquí salen los partidos del día."
-                else
-                    "Esperando el primer resumen de la PC.\n\nLlega solo cada pocos minutos mientras el vigilante esté corriendo en la computadora.",
-                Panel.SUAVE
-            ))
+            if (canal.isBlank()) {
+                contenedor.addView(Panel.aviso(this,
+                    "Pega el canal en Ajustes y enciende. En cuanto la app llegue a tu PC, aquí salen los partidos del día.",
+                    Panel.SUAVE))
+                return
+            }
+            // Qué está pasando, para que nunca quede la pantalla vacía sin explicación.
+            val ip = Red.ipLocal(this)
+            val diag = StringBuilder("Todavía no llego a tu PC.\n\n")
+            diag.append(if (AlertaService.corriendo) "✔ Alertas encendidas\n" else "✖ Alertas apagadas: abre Ajustes y toca ENCENDER\n")
+            diag.append(if (ip != null) "✔ Conectado al wifi ($ip)\n" else "✖ No estás en un wifi: fuera de casa necesito la dirección de internet de la PC\n")
+            diag.append(if (enlaceLan.isNotBlank()) "• PC en el wifi: ${enlaceLan.removePrefix("http://")}\n" else "• Dirección de la PC en el wifi: todavía no la sé\n")
+            diag.append(if (enlacePublico.isNotBlank()) "• PC por internet: ${enlacePublico.removePrefix("https://")}\n" else "• Dirección por internet: todavía no la sé\n")
+            diag.append("\nEn la PC: el vigilante (ventana negra) tiene que estar abierto. Abajo dice «dirección para el celular». " +
+                    "Si con el botón no la encuentro, escribe esa dirección en Ajustes, o corre PERMITIR_CELULAR.bat en la PC (permiso del firewall).")
+            contenedor.addView(Panel.aviso(this, diag.toString(), Panel.SUAVE).apply { maxLines = 20 })
+            contenedor.addView(Button(this).apply {
+                text = getString(R.string.buscar_pc)
+                setOnClickListener { buscarPc() }
+            })
             return
         }
 
@@ -386,6 +404,39 @@ class MainActivity : AppCompatActivity() {
             }.getOrDefault(false)
             mano.post {
                 aviso(if (ok) "Aviso enviado, debe sonar en unos segundos" else "No se pudo enviar: revisa internet")
+            }
+        }.start()
+    }
+
+    /** Busca la PC: la dirección escrita en Ajustes si hay, si no recorre el wifi. */
+    private fun buscarPc() {
+        val c = campoCanal.text.toString().trim().ifBlank { canal }
+        if (c.isBlank()) {
+            aviso("Primero pega el canal")
+            return
+        }
+        val escrita = Red.normalizar(campoPc.text.toString())
+        aviso(if (escrita.isNotBlank()) "Probando $escrita…" else "Buscando tu PC en el wifi… (unos segundos)")
+        Thread {
+            val hallada = if (escrita.isNotBlank()) escrita.takeIf { Red.responde(it, c) }
+            else runCatching { Red.buscarPc(this, c) }.getOrNull()
+            mano.post {
+                if (hallada != null) {
+                    enlaceLan = hallada
+                    campoPc.setText(hallada.removePrefix("http://").removeSuffix(":${Red.PUERTO}"))
+                    if (canal.isBlank()) canal = c
+                    if (!AlertaService.corriendo) AlertaService.arrancar(this)
+                    aviso("¡Encontré tu PC! ${hallada.removePrefix("http://")}. En segundos salen los partidos.")
+                } else {
+                    aviso(
+                        when {
+                            Red.ipLocal(this) == null -> "No estás conectado a un wifi."
+                            escrita.isNotBlank() -> "Esa dirección no contesta. ¿El vigilante está abierto? En la PC corre PERMITIR_CELULAR.bat"
+                            else -> "No la encontré. ¿Vigilante abierto y mismo wifi? En la PC corre PERMITIR_CELULAR.bat"
+                        }
+                    )
+                }
+                firmaPintada = ""
             }
         }.start()
     }

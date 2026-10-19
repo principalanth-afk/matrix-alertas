@@ -120,6 +120,37 @@
                 android:textColorHint="#4A5268"
                 android:textSize="15sp" />
 
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="@string/etiqueta_pc"
+                android:textColor="#7A849E"
+                android:textSize="12sp" />
+
+            <EditText
+                android:id="@+id/campo_pc"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:autofillHints=""
+                android:background="#171A22"
+                android:hint="@string/pista_pc"
+                android:inputType="textUri"
+                android:padding="14dp"
+                android:textColor="#E6E8EF"
+                android:textColorHint="#4A5268"
+                android:textSize="15sp" />
+
+            <Button
+                android:id="@+id/boton_buscar_pc"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:backgroundTint="#22D3EE"
+                android:text="@string/buscar_pc"
+                android:textColor="#0B0D12"
+                android:textStyle="bold" />
+
             <Button
                 android:id="@+id/boton_encender"
                 android:layout_width="match_parent"
