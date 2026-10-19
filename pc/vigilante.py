@@ -476,7 +476,7 @@ def cargar_config():
     s.setdefault("marcador_en_vivo", "si")
     s.setdefault("scarlet_carpeta", "")
     s.setdefault("scarlet_cada_minutos", "12")
-    s.setdefault("segundos_refresco_vivo", "45")
+    s.setdefault("segundos_refresco_vivo", "20")
     s.setdefault("fuente_vivo", "navegador")
     s.setdefault("navegador", "auto")
     s.setdefault("fichas_vivo", "si")
@@ -500,6 +500,11 @@ def cargar_config():
         s["prioridad_roja"] = "4"
         s["mandar_estado_cada_minutos"] = "15"
         s["version_config"] = "2"
+    # v3 (19/10/2026): la página del partido se lee cada 20 s (antes 45): el gol y la roja llegan antes.
+    if int(s.get("version_config", "1") or 1) < 3:
+        if str(s.get("segundos_refresco_vivo", "")).strip() in ("", "45"):
+            s["segundos_refresco_vivo"] = "20"
+        s["version_config"] = "3"
 
     with open(CONFIG, "w", encoding="utf-8") as f:
         cp.write(f)
