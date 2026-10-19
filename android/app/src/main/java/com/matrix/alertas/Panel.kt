@@ -280,6 +280,69 @@ object Panel {
         }
 
     /**
+     * Encabezado del partido abierto, como en BetMines: el local a la izquierda,
+     * el recuadro del centro con el marcador y el minuto, y el visitante a la
+     * derecha. Así se sabe de quién es cada columna de las estadísticas.
+     */
+    fun cabeceraPartido(c: Context, p: Partido): View = LinearLayout(c).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        background = GradientDrawable().apply {
+            cornerRadius = dp(c, 9).toFloat()
+            setColor(0xFF10141C.toInt())
+        }
+        setPadding(dp(c, 10), dp(c, 10), dp(c, 10), dp(c, 10))
+        layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = dp(c, 2); topMargin = -dp(c, 2) }
+
+        val partes = p.nombre.split(" vs ", limit = 2)
+        val local = partes.getOrElse(0) { p.nombre }.trim()
+        val visita = partes.getOrElse(1) { "" }.trim()
+
+        fun nombre(t: String, g: Int) = texto(c, t, 13f, TEXTO, negrita = true).apply {
+            maxLines = 2
+            gravity = g
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        addView(nombre(local, Gravity.START or Gravity.CENTER_VERTICAL))
+
+        // El recuadro del centro: marcador grande y, debajo, minuto / descanso / final / hora.
+        val gl = p.marcadorGl
+        val gv = p.marcadorGv
+        val marcador = if (gl != null && gv != null) "$gl - $gv" else "vs"
+        val debajo = when {
+            p.suspendido || p.vivoEstado == "suspendido" -> "SUSP."
+            p.tieneResultado || p.vivoEstado == "fin" -> "FINAL"
+            p.vivoEstado == "descanso" -> "DESCANSO"
+            p.vivoEstado == "vivo" && p.vivoMinuto != null -> "${p.vivoMinuto}'"
+            else -> p.hora
+        }
+        val colorMarcador = when {
+            p.vivoEstado == "vivo" || p.vivoEstado == "descanso" -> ROJO
+            p.tieneResultado || p.vivoEstado == "fin" -> if (p.esUnder) VERDE else ROJO
+            else -> CIAN
+        }
+        addView(LinearLayout(c).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                cornerRadius = dp(c, 8).toFloat()
+                setColor(0xFF1C2230.toInt())
+            }
+            setPadding(dp(c, 12), dp(c, 6), dp(c, 12), dp(c, 6))
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { marginStart = dp(c, 8); marginEnd = dp(c, 8) }
+            addView(texto(c, marcador, 18f, colorMarcador, negrita = true, mono = true).apply {
+                gravity = Gravity.CENTER
+            })
+            addView(texto(c, debajo, 10.5f, SUAVE, mono = true).apply { gravity = Gravity.CENTER })
+        })
+        addView(nombre(visita, Gravity.END or Gravity.CENTER_VERTICAL))
+    }
+
+    /**
      * El bloque de estadísticas que se abre al tocar un partido.
      * Las tarjetas van primero, y las rojas en rojo: son las que cambian el juego.
      */

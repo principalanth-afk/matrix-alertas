@@ -279,6 +279,7 @@ class MainActivity : AppCompatActivity() {
         contenedor.addView(fila)
         if (!abiertos.contains(p.nombre)) return
         val f = fichas[p.nombre]
+        contenedor.addView(Panel.cabeceraPartido(this, p))
         contenedor.addView(
             when {
                 f != null -> Panel.bloqueFicha(this, f)
