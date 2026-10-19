@@ -130,11 +130,13 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        AlertaService.rapido = true          // con la app abierta, datos cada 5 s
         firmaPintada = ""
         mano.post(latir)
     }
 
     override fun onPause() {
+        AlertaService.rapido = false
         mano.removeCallbacks(latir)
         super.onPause()
     }
@@ -151,10 +153,16 @@ class MainActivity : AppCompatActivity() {
         val ahora = minutosDeAhora()
         reloj.text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
 
+        // Lo que llega directo de la PC manda si es reciente (menos de 3 min);
+        // si no, se usa el resumen que llegó por ntfy.
+        val directoEn = datosEn
+        val directoFresco = System.currentTimeMillis() - directoEn < 180_000L
+        val crudoDirecto = if (directoFresco) datosApp else ""
         val crudo = ultimoEstado
-        // Solo se vuelve a dibujar si cambió el resumen o pasó un minuto.
+        // Solo se vuelve a dibujar si cambió algo o pasó un minuto.
         val crudoFichas = ultimasFichas
-        val firma = "$crudo|$crudoFichas|$ahora|${AlertaService.corriendo}|${AlertaService.conectado}|${abiertos.sorted()}"
+        val firma = "${crudoDirecto.hashCode()}|${crudo.hashCode()}|${crudoFichas.hashCode()}|$ahora|" +
+                "${AlertaService.corriendo}|${AlertaService.conectado}|${AlertaService.via}|${abiertos.sorted()}"
         if (firma == firmaPintada) return
         firmaPintada = firma
 
@@ -162,8 +170,9 @@ class MainActivity : AppCompatActivity() {
         if (bloqueAjustes.visibility == android.view.View.VISIBLE) pintarAjustes()
 
         contenedor.removeAllViews()
-        val fichas = parsearFichas(crudoFichas)
-        val dia = parsearEstado(crudo)
+        val directo = parsearDatos(crudoDirecto)
+        val fichas = directo?.fichas ?: parsearFichas(crudoFichas)
+        val dia = directo?.dia ?: parsearEstado(crudo)
         if (dia == null) {
             contenedor.addView(Panel.aviso(
                 this,
@@ -217,7 +226,7 @@ class MainActivity : AppCompatActivity() {
         if (porJugar.isEmpty()) {
             contenedor.addView(Panel.aviso(this, "Ya salieron todos los de hoy."))
         } else {
-            for ((p, f) in porJugar) contenedor.addView(Panel.filaPorJugar(this, p, f))
+            for ((p, f) in porJugar) agregarConFicha(p, Panel.filaPorJugar(this, p, f), fichas, porJugar = true)
         }
 
         if (manana.isNotEmpty()) {
@@ -227,7 +236,7 @@ class MainActivity : AppCompatActivity() {
 
         if (esperando.isNotEmpty()) {
             contenedor.addView(Panel.seccion(this, "ESPERANDO RESULTADO", "${esperando.size}", Panel.MAGENTA))
-            for ((p, d) in esperando) contenedor.addView(Panel.filaEsperando(this, p, duracion, d))
+            for ((p, d) in esperando) agregarConFicha(p, Panel.filaEsperando(this, p, duracion, d), fichas)
         }
 
         if (listos.isNotEmpty()) {
@@ -246,8 +255,12 @@ class MainActivity : AppCompatActivity() {
 
         contenedor.addView(Panel.aviso(
             this,
-            "Resumen de la PC de las ${dia.enviado} · ${dia.fecha}\n" +
-                    "El minuto es estimado por la hora de inicio, no es un marcador en vivo."
+            if (directo != null)
+                "Datos directos de la PC (${AlertaService.via.ifBlank { "última lectura" }}) · ${dia.fecha} ${dia.enviado}\n" +
+                        "Toca cualquier partido para ver sus estadísticas."
+            else
+                "Resumen de la PC de las ${dia.enviado} · ${dia.fecha} (por ntfy)\n" +
+                        "Sin conexión directa con la PC: el minuto puede ser estimado por la hora de inicio."
         ))
     }
 
@@ -255,7 +268,9 @@ class MainActivity : AppCompatActivity() {
      * Pone la fila y, si está desplegada, el bloque de estadísticas debajo.
      * Tocar la fila la abre o la cierra.
      */
-    private fun agregarConFicha(p: Partido, fila: android.view.View, fichas: Map<String, Ficha>) {
+    private fun agregarConFicha(
+        p: Partido, fila: android.view.View, fichas: Map<String, Ficha>, porJugar: Boolean = false
+    ) {
         fila.setOnClickListener {
             if (!abiertos.remove(p.nombre)) abiertos.add(p.nombre)
             firmaPintada = ""          // obliga a redibujar en el siguiente tic
@@ -264,7 +279,17 @@ class MainActivity : AppCompatActivity() {
         contenedor.addView(fila)
         if (!abiertos.contains(p.nombre)) return
         val f = fichas[p.nombre]
-        contenedor.addView(if (f != null) Panel.bloqueFicha(this, f) else Panel.sinFicha(this))
+        contenedor.addView(Panel.cabeceraPartido(this, p))
+        contenedor.addView(
+            when {
+                f != null -> Panel.bloqueFicha(this, f)
+                porJugar -> Panel.sinFicha(
+                    this, "Empieza a las ${p.hora}${if (p.competicion.isNotBlank()) " · " + p.competicion else ""}.\n" +
+                            "Sus estadísticas salen aquí en cuanto arranque."
+                )
+                else -> Panel.sinFicha(this)
+            }
+        )
     }
 
     private fun lineaDeEstado(): String {
@@ -272,6 +297,11 @@ class MainActivity : AppCompatActivity() {
             !AlertaService.corriendo -> "apagado"
             AlertaService.conectado -> "conectado"
             else -> "reconectando…"
+        }
+        val directo = datosEn
+        if (AlertaService.via.isNotBlank() && System.currentTimeMillis() - directo < 60_000L) {
+            val seg = ((System.currentTimeMillis() - directo) / 1000L).toInt()
+            return "$conexion · directo por ${AlertaService.via} · hace $seg s"
         }
         val recibido = estadoRecibidoEn
         val edad = if (recibido == 0L) "sin datos todavía" else {
@@ -296,6 +326,11 @@ class MainActivity : AppCompatActivity() {
                 else -> "● Encendido, reconectando…\n"
             }
         )
+        l.append("\nConexión directa con la PC:\n")
+        l.append(marca(enlaceLan.isNotBlank()) + " Wifi de la casa ${enlaceLan.ifBlank { "(todavía no llega)" }}\n")
+        l.append(marca(enlacePublico.isNotBlank()) + " Internet ${enlacePublico.removePrefix("https://").ifBlank { "(todavía no llega)" }}\n")
+        l.append(if (AlertaService.via.isNotBlank()) "  → leyendo directo por ${AlertaService.via}\n"
+                 else "  → sin conexión directa: todo llega por ntfy\n")
         l.append("\nPermisos:\n")
         l.append(marca(notificacionesOk()) + " Notificaciones\n")
         l.append(marca(superponerOk()) + " Mostrar sobre otras apps\n")

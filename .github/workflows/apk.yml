@@ -2,7 +2,8 @@ name: Compilar APK
 
 on:
   push:
-    branches: [main]
+    branches: ['**']
+    paths: ['android/**', '.github/workflows/**']
   workflow_dispatch:
 
 permissions:
@@ -40,7 +41,9 @@ jobs:
           name: MATRIX-Alertas-APK
           path: salida/MATRIX-Alertas.apk
 
+      # Solo lo que llega a main se publica en Releases; las otras ramas solo comprueban que compila.
       - name: Publicar para descargar desde el celular
+        if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ github.run_number }}

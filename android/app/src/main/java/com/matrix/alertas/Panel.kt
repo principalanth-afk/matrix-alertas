@@ -250,9 +250,24 @@ object Panel {
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
             )
+            if (visitante.isBlank()) {
+                // Un solo valor (p. ej. «Apuesta sugerida  Menos de 3.5»): nombre a la izquierda, valor a la derecha.
+                addView(texto(c, nombre, 11.5f, SUAVE).apply {
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                })
+                addView(texto(c, local, 12.5f, colorL, negrita = true, mono = true).apply {
+                    gravity = Gravity.END
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply { marginStart = dp(c, 8) }
+                })
+                return@apply
+            }
+            // Valores largos (la racha «G E P G G») necesitan más ancho que un número.
+            val ancho = dp(c, if (maxOf(local.length, visitante.length) > 6) 88 else 52)
             addView(texto(c, local, 12.5f, colorL, negrita = true, mono = true).apply {
                 gravity = Gravity.START
-                layoutParams = LinearLayout.LayoutParams(dp(c, 52), ViewGroup.LayoutParams.WRAP_CONTENT)
+                layoutParams = LinearLayout.LayoutParams(ancho, ViewGroup.LayoutParams.WRAP_CONTENT)
             })
             addView(texto(c, nombre, 11.5f, SUAVE).apply {
                 gravity = Gravity.CENTER
@@ -260,9 +275,72 @@ object Panel {
             })
             addView(texto(c, visitante, 12.5f, colorV, negrita = true, mono = true).apply {
                 gravity = Gravity.END
-                layoutParams = LinearLayout.LayoutParams(dp(c, 52), ViewGroup.LayoutParams.WRAP_CONTENT)
+                layoutParams = LinearLayout.LayoutParams(ancho, ViewGroup.LayoutParams.WRAP_CONTENT)
             })
         }
+
+    /**
+     * Encabezado del partido abierto, como en BetMines: el local a la izquierda,
+     * el recuadro del centro con el marcador y el minuto, y el visitante a la
+     * derecha. Así se sabe de quién es cada columna de las estadísticas.
+     */
+    fun cabeceraPartido(c: Context, p: Partido): View = LinearLayout(c).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        background = GradientDrawable().apply {
+            cornerRadius = dp(c, 9).toFloat()
+            setColor(0xFF10141C.toInt())
+        }
+        setPadding(dp(c, 10), dp(c, 10), dp(c, 10), dp(c, 10))
+        layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = dp(c, 2); topMargin = -dp(c, 2) }
+
+        val partes = p.nombre.split(" vs ", limit = 2)
+        val local = partes.getOrElse(0) { p.nombre }.trim()
+        val visita = partes.getOrElse(1) { "" }.trim()
+
+        fun nombre(t: String, g: Int) = texto(c, t, 13f, TEXTO, negrita = true).apply {
+            maxLines = 2
+            gravity = g
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        addView(nombre(local, Gravity.START or Gravity.CENTER_VERTICAL))
+
+        // El recuadro del centro: marcador grande y, debajo, minuto / descanso / final / hora.
+        val gl = p.marcadorGl
+        val gv = p.marcadorGv
+        val marcador = if (gl != null && gv != null) "$gl - $gv" else "vs"
+        val debajo = when {
+            p.suspendido || p.vivoEstado == "suspendido" -> "SUSP."
+            p.tieneResultado || p.vivoEstado == "fin" -> "FINAL"
+            p.vivoEstado == "descanso" -> "DESCANSO"
+            p.vivoEstado == "vivo" && p.vivoMinuto != null -> "${p.vivoMinuto}'"
+            else -> p.hora
+        }
+        val colorMarcador = when {
+            p.vivoEstado == "vivo" || p.vivoEstado == "descanso" -> ROJO
+            p.tieneResultado || p.vivoEstado == "fin" -> if (p.esUnder) VERDE else ROJO
+            else -> CIAN
+        }
+        addView(LinearLayout(c).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                cornerRadius = dp(c, 8).toFloat()
+                setColor(0xFF1C2230.toInt())
+            }
+            setPadding(dp(c, 12), dp(c, 6), dp(c, 12), dp(c, 6))
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { marginStart = dp(c, 8); marginEnd = dp(c, 8) }
+            addView(texto(c, marcador, 18f, colorMarcador, negrita = true, mono = true).apply {
+                gravity = Gravity.CENTER
+            })
+            addView(texto(c, debajo, 10.5f, SUAVE, mono = true).apply { gravity = Gravity.CENTER })
+        })
+        addView(nombre(visita, Gravity.END or Gravity.CENTER_VERTICAL))
+    }
 
     /**
      * El bloque de estadísticas que se abre al tocar un partido.
@@ -284,6 +362,9 @@ object Panel {
             val rv = f.rojasV ?: 0
             addView(lineaDato(c, "rojas", "$rl", "$rv",
                 if (rl > 0) ROJO else TENUE, if (rv > 0) ROJO else TENUE))
+            if (f.rojasAnuladas > 0) {
+                addView(lineaDato(c, "rojas anuladas por el VAR", "${f.rojasAnuladas}", "", SUAVE, SUAVE))
+            }
             addView(lineaDato(c, "amarillas", "${f.amarillas ?: 0}", "${f.amarillasV ?: 0}",
                 AMBAR, AMBAR))
             addView(lineaDato(c, "córners", "${f.corners ?: 0}", "${f.cornersV ?: 0}"))
@@ -296,13 +377,29 @@ object Panel {
         }
         for (d in f.datos) addView(lineaDato(c, d.nombre, d.local, d.visitante))
         if (!f.hayTarjetas && f.datos.isEmpty()) {
-            addView(texto(c, "Sin estadísticas todavía", 12f, TENUE))
+            addView(texto(c, if (f.previa.isEmpty()) "Sin estadísticas todavía"
+                             else "Estadísticas en vivo: todavía no hay (salen cuando el partido está en juego)", 12f, TENUE).apply { maxLines = 2 })
+        }
+        if (f.previa.isNotEmpty()) {
+            // Lo de antes del partido, del Excel de omega: posiciones, cuotas, medias, H2H…
+            addView(View(c).apply {
+                setBackgroundColor(0xFF232838.toInt())
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(c, 1)
+                ).apply { topMargin = dp(c, 8); bottomMargin = dp(c, 4) }
+            })
+            addView(texto(c, "PREVIA DEL PARTIDO", 11f, CIAN, negrita = true).apply {
+                letterSpacing = 0.09f
+                setPadding(0, dp(c, 2), 0, dp(c, 4))
+            })
+            for (d in f.previa) addView(lineaDato(c, d.nombre, d.local, d.visitante, SUAVE, SUAVE))
         }
     }
 
     /** Aviso de que ese partido aún no tiene ficha. */
-    fun sinFicha(c: Context): View = texto(c, "Todavía no he leído sus estadísticas", 11.5f, TENUE)
+    fun sinFicha(c: Context, t: String = "Todavía no he leído sus estadísticas"): View = texto(c, t, 11.5f, TENUE)
         .apply {
+            maxLines = 3
             setPadding(dp(c, 12), dp(c, 2), dp(c, 12), dp(c, 10))
         }
 
