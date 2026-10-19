@@ -1,5 +1,6 @@
 package com.matrix.alertas
 
+import org.json.JSONObject
 import java.util.Calendar
 
 /** Un partido del día, tal como lo manda la PC. */
@@ -82,7 +83,8 @@ data class Ficha(
     val minuto: Int?,
     val corners: Int?, val cambios: Int?, val amarillas: Int?, val rojas: Int?,
     val cornersV: Int?, val cambiosV: Int?, val amarillasV: Int?, val rojasV: Int?,
-    val datos: List<Dato>
+    val datos: List<Dato>,
+    val rojasAnuladas: Int = 0      // rojas que el VAR anuló (ya descontadas de rojas/rojasV)
 ) {
     val hayTarjetas: Boolean get() = amarillas != null || rojas != null
 }
@@ -192,3 +194,79 @@ fun relojDe(minutosJugados: Int): String = when {
 fun faltaTexto(minutos: Int): String =
     if (minutos < 60) "$minutos min"
     else "${minutos / 60} h ${String.format("%02d", minutos % 60)} min"
+
+
+// ------------------------------------------------ lo que se lee directo de la PC (v1.2)
+
+/** Todo lo que manda servidor_app.py: los partidos del día con su ficha. */
+data class DatosApp(val dia: EstadoDia, val fichas: Map<String, Ficha>, val generado: String)
+
+private fun JSONObject.entero(k: String): Int? {
+    if (!has(k) || isNull(k)) return null
+    return when (val v = opt(k)) {
+        is Number -> v.toInt()
+        is String -> v.trim().toIntOrNull()
+        else -> null
+    }
+}
+
+/**
+ * Lee el JSON de /m/<canal>/datos:
+ *   {"hoy":"19/10/2026","hora":"13:40","partidos":[{"nombre":…,"hora":"19:15","gl":null,…,
+ *     "vivo":{"gl":0,"gv":0,"estado":"vivo","minuto":37},"ficha":{"rojas":0,…,"stats":[…]}}]}
+ */
+fun parsearDatos(texto: String?): DatosApp? {
+    if (texto.isNullOrBlank()) return null
+    val j = runCatching { JSONObject(texto) }.getOrNull() ?: return null
+    val arr = j.optJSONArray("partidos") ?: return null
+    val partidos = ArrayList<Partido>()
+    val fichas = HashMap<String, Ficha>()
+    for (i in 0 until arr.length()) {
+        val o = arr.optJSONObject(i) ?: continue
+        val nombre = o.optString("nombre")
+        if (nombre.isBlank()) continue
+        val hm = o.optString("hora").split(":")
+        val min = if (hm.size == 2) {
+            val h = hm[0].toIntOrNull() ?: -1
+            val m = hm[1].toIntOrNull() ?: -1
+            if (h in 0..23 && m in 0..59) h * 60 + m else -1
+        } else -1
+        val v = o.optJSONObject("vivo")
+        partidos.add(
+            Partido(
+                nombre = nombre,
+                competicion = o.optString("competicion"),
+                inicioMin = min,
+                gl = o.entero("gl"),
+                gv = o.entero("gv"),
+                suspendido = o.optBoolean("susp", false),
+                vivoGl = v?.entero("gl"),
+                vivoGv = v?.entero("gv"),
+                vivoEstado = v?.optString("estado").orEmpty(),
+                vivoMinuto = v?.entero("minuto"),
+                dia = o.optInt("dia", 0)
+            )
+        )
+        val f = o.optJSONObject("ficha") ?: continue
+        val datos = ArrayList<Dato>()
+        val st = f.optJSONArray("stats")
+        if (st != null) {
+            for (k in 0 until st.length()) {
+                val d = st.optJSONObject(k) ?: continue
+                val n = d.optString("nombre")
+                if (n.isNotBlank()) datos.add(Dato(n, d.optString("local"), d.optString("visitante")))
+            }
+        }
+        fichas[nombre] = Ficha(
+            nombre = nombre,
+            gl = f.entero("gl"), gv = f.entero("gv"), minuto = f.entero("minuto"),
+            corners = f.entero("corners"), cambios = f.entero("cambios"),
+            amarillas = f.entero("amarillas"), rojas = f.entero("rojas"),
+            cornersV = f.entero("cornersV"), cambiosV = f.entero("cambiosV"),
+            amarillasV = f.entero("amarillasV"), rojasV = f.entero("rojasV"),
+            datos = datos,
+            rojasAnuladas = f.entero("rojasAnuladas") ?: 0
+        )
+    }
+    return DatosApp(EstadoDia(j.optString("hora"), j.optString("hoy"), partidos), fichas, j.optString("generado"))
+}

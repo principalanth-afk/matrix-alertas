@@ -1,0 +1,17 @@
+# Lo privado o que cambia solo en tu PC: nunca se sube
+config.ini
+pc/config.ini
+estado_avisos.json
+estado_avisos.json.tmp
+diagnostico_vivo.txt
+cloudflared.exe
+*.descargando
+*.xlsx
+*.pyc
+__pycache__/
+
+# Compilación de Android
+.gradle/
+build/
+local.properties
+.idea/

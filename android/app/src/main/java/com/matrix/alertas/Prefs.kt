@@ -57,3 +57,46 @@ var Context.ultimasFichas: String
     set(v) {
         prefs().edit().putString("fichas", v).apply()
     }
+
+// ------------------------------------------------ conexión directa con la PC (v1.2)
+
+/** Dirección de la PC en el wifi de la casa, p. ej. http://192.168.1.20:8782 (la manda el vigilante). */
+var Context.enlaceLan: String
+    get() = prefs().getString("enlace_lan", "") ?: ""
+    set(v) {
+        prefs().edit().putString("enlace_lan", v.trim().trimEnd('/')).apply()
+    }
+
+/** Dirección del túnel, p. ej. https://algo.trycloudflare.com (cambia cuando la PC se reinicia). */
+var Context.enlacePublico: String
+    get() = prefs().getString("enlace_publico", "") ?: ""
+    set(v) {
+        prefs().edit().putString("enlace_publico", v.trim().trimEnd('/')).apply()
+    }
+
+/** Lo último que se leyó directo de la PC (JSON con todos los partidos y sus estadísticas). */
+var Context.datosApp: String
+    get() = prefs().getString("datos_app", "") ?: ""
+    set(v) {
+        prefs().edit().putString("datos_app", v).apply()
+    }
+
+var Context.datosEn: Long
+    get() = prefs().getLong("datos_en", 0L)
+    set(v) {
+        prefs().edit().putLong("datos_en", v).apply()
+    }
+
+/** Hasta qué alarma del buzón de la PC ya se mostró. */
+var Context.ackApp: Long
+    get() = prefs().getLong("ack_app", 0L)
+    set(v) {
+        prefs().edit().putLong("ack_app", v).apply()
+    }
+
+/** Identidad de la PC (si cambia, la cuenta de alarmas vuelve a empezar). */
+var Context.pcId: String
+    get() = prefs().getString("pc_id", "") ?: ""
+    set(v) {
+        prefs().edit().putString("pc_id", v).apply()
+    }

@@ -284,6 +284,9 @@ object Panel {
             val rv = f.rojasV ?: 0
             addView(lineaDato(c, "rojas", "$rl", "$rv",
                 if (rl > 0) ROJO else TENUE, if (rv > 0) ROJO else TENUE))
+            if (f.rojasAnuladas > 0) {
+                addView(lineaDato(c, "rojas anuladas (VAR)", "${f.rojasAnuladas}", "", SUAVE, SUAVE))
+            }
             addView(lineaDato(c, "amarillas", "${f.amarillas ?: 0}", "${f.amarillasV ?: 0}",
                 AMBAR, AMBAR))
             addView(lineaDato(c, "córners", "${f.corners ?: 0}", "${f.cornersV ?: 0}"))
@@ -301,8 +304,9 @@ object Panel {
     }
 
     /** Aviso de que ese partido aún no tiene ficha. */
-    fun sinFicha(c: Context): View = texto(c, "Todavía no he leído sus estadísticas", 11.5f, TENUE)
+    fun sinFicha(c: Context, t: String = "Todavía no he leído sus estadísticas"): View = texto(c, t, 11.5f, TENUE)
         .apply {
+            maxLines = 3
             setPadding(dp(c, 12), dp(c, 2), dp(c, 12), dp(c, 10))
         }
 

@@ -8,6 +8,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -23,9 +24,16 @@ import java.util.concurrent.TimeUnit
  * Mantiene abierta una conexión con el canal de avisos y, cuando llega uno,
  * levanta la pantalla de alarma por encima de lo que sea que esté abierto.
  *
- * No usa Firebase: habla directo con el servidor (ntfy) por una conexión HTTP
- * que queda abierta. Por eso corre en primer plano con su propia notificación,
- * que es lo que impide que Android lo mate al rato.
+ * Dos caminos (v1.2):
+ *  1. DIRECTO a la PC (servidor_app.py): cada 15 s (5 s con la app abierta) se
+ *     piden los partidos, las estadísticas y las alarmas nuevas. Primero por el
+ *     wifi de la casa y, si no, por el túnel de internet. Sin límite de mensajes.
+ *  2. ntfy, como siempre: de respaldo (si el celular no llega a la PC, la PC
+ *     manda la alarma por ntfy a los 45 s) y para recibir la dirección del túnel.
+ * Una misma alarma que llegue por los dos caminos se muestra una sola vez.
+ *
+ * Corre en primer plano con su propia notificación, que es lo que impide que
+ * Android lo mate al rato.
  */
 class AlertaService : Service() {
 
@@ -40,6 +48,16 @@ class AlertaService : Service() {
         /** Título reservado: marca el mensaje que trae la lista del día. */
         const val TITULO_ESTADO = "__ESTADO__"
         const val TITULO_FICHAS = "__FICHAS__"
+        /** Título reservado: trae las direcciones de la PC (wifi y túnel). */
+        const val TITULO_ENLACE = "__ENLACE__"
+
+        /** Con la app abierta se piden los datos más seguido. */
+        @Volatile
+        var rapido: Boolean = false
+
+        /** Por dónde se llegó a la PC la última vez: «wifi», «internet» o "" (no se llegó). */
+        @Volatile
+        var via: String = ""
 
         /** Para que la pantalla principal pueda mostrar si está conectado. */
         @Volatile
@@ -105,6 +123,7 @@ class AlertaService : Service() {
     }
 
     private var hilo: Thread? = null
+    private var hiloDirecto: Thread? = null
 
     @Volatile
     private var seguir = false
@@ -139,6 +158,10 @@ class AlertaService : Service() {
         if (hilo?.isAlive != true) {
             seguir = true
             hilo = Thread { escuchar() }.also { it.isDaemon = true; it.start() }
+        }
+        if (hiloDirecto?.isAlive != true) {
+            seguir = true
+            hiloDirecto = Thread { sondear() }.also { it.isDaemon = true; it.start() }
         }
         programarVigia()
         // START_STICKY: si Android mata el servicio por memoria, lo vuelve a levantar.
@@ -193,6 +216,9 @@ class AlertaService : Service() {
         corriendo = false
         hilo?.interrupt()
         hilo = null
+        hiloDirecto?.interrupt()
+        hiloDirecto = null
+        via = ""
         runCatching { wakeLock?.takeIf { it.isHeld }?.release() }
         wakeLock = null
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -274,15 +300,129 @@ class AlertaService : Service() {
                     // Tampoco es un aviso: son las estadísticas que se
                     // despliegan al tocar un partido. No suena ni se muestra.
                     ultimasFichas = texto
-                } else if (prioridad >= 4) {
-                    mostrarAlarma(titulo, texto)
+                } else if (titulo == TITULO_ENLACE) {
+                    // Las direcciones para hablar directo con la PC: «MATRIXE|{"lan":…,"publico":…}»
+                    runCatching { JSONObject(texto.substringAfter("|")) }.getOrNull()?.let { o ->
+                        enlaceLan = o.optString("lan")
+                        enlacePublico = o.optString("publico")
+                    }
                 } else {
-                    mostrarAviso(titulo, texto)
+                    mostrarUnaVez(titulo, texto, prioridad)
                 }
             }
             // "open" y "keepalive" solo confirman que la conexión sigue viva.
             "open", "keepalive" -> conectado = true
         }
+    }
+
+    // ------------------------------------------------------ directo a la PC
+
+    private val clienteCorto: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(4, TimeUnit.SECONDS)
+            .readTimeout(12, TimeUnit.SECONDS)
+            .callTimeout(15, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(false)
+            .build()
+    }
+
+    /** Si el wifi de la casa no contestó, no se vuelve a probar en 2 min (fuera de casa, con datos). */
+    private var lanFalloHasta = 0L
+    private var ultimaBuena = ""
+
+    private fun pedir(url: String): String? =
+        clienteCorto.newCall(Request.Builder().url(url).build()).execute().use { r ->
+            if (r.isSuccessful) r.body?.string() else null
+        }
+
+    /**
+     * Cada 15 s (5 s con la app abierta) le pide a la PC los partidos y las
+     * alarmas nuevas. Primero por donde funcionó la última vez, después el wifi
+     * de la casa y por último el túnel de internet.
+     */
+    private fun sondear() {
+        while (seguir) {
+            val c = canal
+            var ok = false
+            if (c.isNotBlank()) {
+                val lan = enlaceLan
+                val pub = enlacePublico
+                val orden = ArrayList<String>()
+                if (ultimaBuena.isNotBlank() && (ultimaBuena == lan || ultimaBuena == pub)) orden.add(ultimaBuena)
+                if (lan.isNotBlank() && System.currentTimeMillis() >= lanFalloHasta && lan !in orden) orden.add(lan)
+                if (pub.isNotBlank() && pub !in orden) orden.add(pub)
+                for (base in orden) {
+                    if (!seguir) break
+                    val url = "$base/m/${Uri.encode(c)}/datos?ack=$ackApp&id=${Uri.encode(pcId)}"
+                    val cuerpo = runCatching { pedir(url) }.getOrNull()
+                    if (cuerpo == null) {
+                        if (base == lan) lanFalloHasta = System.currentTimeMillis() + 120_000L
+                        continue
+                    }
+                    if (procesarDatos(base, c, cuerpo)) {
+                        ultimaBuena = base
+                        via = if (base == lan) "wifi" else "internet"
+                        ok = true
+                        break
+                    }
+                }
+            }
+            if (!ok) via = ""
+            dormir(if (rapido) 5_000 else 15_000)
+        }
+    }
+
+    /** Guarda los datos para la pantalla y muestra las alarmas nuevas del buzón de la PC. */
+    private fun procesarDatos(base: String, c: String, cuerpo: String): Boolean {
+        val j = runCatching { JSONObject(cuerpo) }.getOrNull() ?: return false
+        if (!j.has("partidos")) return false
+        datosApp = cuerpo
+        datosEn = System.currentTimeMillis()
+
+        val serie = j.optLong("serie", 0L)
+        val id = j.optString("id")
+        if (id != pcId || ackApp > serie) {
+            // Primera vez con esta PC (o la PC empezó de cero): no se repiten alarmas viejas.
+            pcId = id
+            ackApp = serie
+            return true
+        }
+        var maximo = ackApp
+        val eventos = j.optJSONArray("eventos")
+        if (eventos != null) {
+            for (i in 0 until eventos.length()) {
+                val e = eventos.optJSONObject(i) ?: continue
+                val n = e.optLong("n", 0L)
+                if (n <= ackApp) continue
+                mostrarUnaVez(e.optString("titulo").ifBlank { "MATRIX" }, e.optString("texto"), e.optInt("prioridad", 3))
+                if (n > maximo) maximo = n
+            }
+        }
+        if (maximo > ackApp) {
+            ackApp = maximo
+            // Se confirma en el acto, para que la PC no la mande también por ntfy.
+            runCatching { pedir("$base/m/${Uri.encode(c)}/ack?n=$maximo&id=${Uri.encode(id)}") }
+        }
+        return true
+    }
+
+    /** Una alarma que llegó por los dos caminos (directo y ntfy) se muestra una sola vez. */
+    private val mostrados = LinkedHashMap<Int, Long>()
+
+    @Synchronized
+    private fun yaMostrado(titulo: String, texto: String): Boolean {
+        val ahora = System.currentTimeMillis()
+        val it = mostrados.entries.iterator()
+        while (it.hasNext()) if (ahora - it.next().value > 3_600_000L) it.remove()
+        val k = (titulo + "\n" + texto).hashCode()
+        if (mostrados.containsKey(k)) return true
+        mostrados[k] = ahora
+        return false
+    }
+
+    private fun mostrarUnaVez(titulo: String, texto: String, prioridad: Int) {
+        if (yaMostrado(titulo, texto)) return
+        if (prioridad >= 4) mostrarAlarma(titulo, texto) else mostrarAviso(titulo, texto)
     }
 
     // ------------------------------------------------------------ mostrar algo
