@@ -25,6 +25,7 @@ import shutil
 import socket
 import subprocess
 import threading
+import json
 import time
 import urllib.request
 
@@ -33,6 +34,12 @@ URL_CLOUDFLARED = ("https://github.com/cloudflare/cloudflared/releases/latest/do
                    "cloudflared-windows-amd64.exe")
 RE_CLOUDFLARE = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
 RE_LHR = re.compile(r"https://[a-z0-9-]+\.(?:lhr\.life|localhost\.run)")
+
+# cloudflared corre SUELTO (no se cierra al cerrar el vigilante) y deja su dirección en un puerto local:
+# así, al volver a abrir el vigilante, se reusa el mismo túnel y la dirección NO cambia (el celular la sigue
+# teniendo aunque ntfy esté agotado). Solo cambia si se reinicia la PC o se cae el túnel.
+PUERTO_METRICAS = 8783
+LOG_CLOUDFLARED = os.path.join(AQUI, "cloudflared.log")
 
 _lock = threading.Lock()
 _estado = {"publico": "", "metodo": "", "proceso": None, "fallos": 0, "detalle": "", "hilo": None,
@@ -153,7 +160,60 @@ def _cmd_cloudflared(puerto):
     exe = _buscar_cloudflared() or _descargar_cloudflared()
     if not exe:
         return None
-    return [exe, "tunnel", "--no-autoupdate", "--url", f"http://127.0.0.1:{puerto}"]
+    return [exe, "tunnel", "--no-autoupdate", "--metrics", f"127.0.0.1:{PUERTO_METRICAS}",
+            "--logfile", LOG_CLOUDFLARED, "--url", f"http://127.0.0.1:{puerto}"]
+
+
+def _tunel_suelto():
+    """La dirección del cloudflared que ya está corriendo (de una vez anterior del vigilante), o ''."""
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{PUERTO_METRICAS}/quicktunnel", timeout=3) as r:
+            h = str(json.loads(r.read().decode("utf-8") or "{}").get("hostname") or "").strip()
+        if h and _metricas_vivas():
+            return h if h.startswith("https://") else "https://" + h
+    except Exception:
+        pass
+    try:                                     # versión sin /quicktunnel: se lee del registro
+        with open(LOG_CLOUDFLARED, encoding="utf-8", errors="replace") as f:
+            f.seek(max(0, os.path.getsize(LOG_CLOUDFLARED) - 200_000))
+            hallados = RE_CLOUDFLARE.findall(f.read())
+        if hallados and _metricas_vivas():
+            return hallados[-1]
+    except OSError:
+        pass
+    return ""
+
+
+def _metricas_vivas():
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{PUERTO_METRICAS}/ready", timeout=3) as r:
+            return r.status == 200
+    except Exception:
+        return False
+
+
+def _lanzar_suelto(cmd, espera=60):
+    """Arranca cloudflared desprendido del vigilante y espera a que diga su dirección."""
+    try:
+        os.remove(LOG_CLOUDFLARED)
+    except OSError:
+        pass
+    flags = 0
+    if os.name == "nt":
+        flags = 0x00000008 | 0x00000200 | 0x08000000   # DETACHED_PROCESS | NEW_PROCESS_GROUP | NO_WINDOW
+    try:
+        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
+                         creationflags=flags, close_fds=True, start_new_session=(os.name != "nt"))
+    except OSError as e:
+        _log(f"   no pude arrancar cloudflared ({e}).")
+        return ""
+    t0 = time.time()
+    while time.time() - t0 < espera:
+        time.sleep(2)
+        u = _tunel_suelto()
+        if u:
+            return u
+    return ""
 
 
 def _cmd_localhost_run(puerto):
@@ -173,6 +233,34 @@ def _mantener(puerto, preferido):
         if _estado["fallos"] >= 3:
             metodos.reverse()
         proc = None
+        # cloudflared: primero se reusa el que ya corre; si no hay, se arranca uno suelto
+        if metodos[0] == "cloudflared":
+            u = _tunel_suelto()
+            nuevo = False
+            if not u:
+                cmd = _cmd_cloudflared(puerto)
+                u = _lanzar_suelto(cmd) if cmd else ""
+                nuevo = True
+            if u:
+                with _lock:
+                    _estado["publico"], _estado["metodo"] = u, "cloudflared"
+                    _estado["detalle"], _estado["fallos"] = "", 0
+                _log(f"Enlace para el celular fuera de casa: {u} (cloudflared{', nuevo' if nuevo else ', el mismo de antes'})")
+                espera = 10
+                while not _estado["parar"]:
+                    time.sleep(15)
+                    if not _metricas_vivas():
+                        break
+                with _lock:
+                    _estado["publico"] = ""
+                if not _estado["parar"]:
+                    _log("El túnel se cerró; lo vuelvo a abrir.")
+                    time.sleep(5)
+                continue
+            with _lock:
+                _estado["fallos"] += 1
+                _estado["detalle"] = "cloudflared no dio dirección"
+            metodos = metodos[1:]
         for metodo in metodos:
             cmd = _cmd_cloudflared(puerto) if metodo == "cloudflared" else _cmd_localhost_run(puerto)
             if not cmd:

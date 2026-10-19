@@ -1504,9 +1504,22 @@ def panel(cfg, partidos, estado, ahora=None):
     A = 78
     hoy_lista = [p for p in partidos if p["fecha"] == hoy and interesa(cfg, p)]
 
+    # El marcador de BetMines (lo que manda Scarlet) manda sobre el reloj estimado.
+    vivos, fichas_v, _vivo = {}, {}, None
+    if cfg.get("vivo"):
+        try:
+            import vivo as _vivo
+            vivos = _vivo.marcadores(cfg, hoy_lista)
+            fichas_v = _vivo.fichas()
+        except Exception:
+            _vivo = None
     grupos = {"en_curso": [], "por_jugar": [], "esperando": [], "listo": [], "suspendido": []}
     for p in hoy_lista:
         est, dato = estado_partido(p, ahora, cfg["minutos_partido"])
+        v = vivos.get(p["clave"])
+        if v and v.get("estado") in ("vivo", "descanso") and est in ("esperando", "por_jugar") \
+                and p["gl"] is None and p["inicio"]:
+            est, dato = "en_curso", int((ahora - p["inicio"]).total_seconds() // 60)
         grupos[est].append((p, dato))
     grupos["en_curso"].sort(key=lambda t: -(t[1] or 0))
     grupos["por_jugar"].sort(key=lambda t: t[1] or 0)
@@ -1533,6 +1546,20 @@ def panel(cfg, partidos, estado, ahora=None):
                     "rojo" if n else "tenue", A, "●"))
     for p, mins in grupos["en_curso"]:
         texto_reloj = _reloj(mins)
+        v = vivos.get(p["clave"])
+        f = fichas_v.get(p["clave"]) or {}
+        if v and v.get("gl") is not None and v.get("estado") in ("vivo", "descanso", "fin"):
+            # REAL, de BetMines: marcador y minuto (o descanso / final), y las rojas
+            que = "DESC" if v["estado"] == "descanso" else "FIN" if v["estado"] == "fin" \
+                else (f"{v['minuto']}'" if v.get("minuto") is not None else "")
+            rl, rv = rojas_netas(f) if f else (None, None)
+            rojas = f" ■{rl}-{rv}" if (rl or rv) else ""
+            fin = p["inicio"] + timedelta(minutes=cfg["minutos_partido"])
+            L.append("     " + _barra(mins, cfg["minutos_partido"]) + "  "
+                     + c(_rellenar(f"{v['gl']}-{v['gv']} {que}", 11), "verde", True)
+                     + c(_rellenar(p["nombre"][:31], 31), "texto") + c(_rellenar(rojas, 7), "rojo", True)
+                     + c(f" {p['hora_txt']:>5}", "suave") + c("  BetMines", "verde"))
+            continue
         if texto_reloj == "descanso":
             etiqueta = c(_rellenar("descanso", 11), "cian", True)
         elif texto_reloj == "terminando":
@@ -1544,6 +1571,9 @@ def panel(cfg, partidos, estado, ahora=None):
                  + c(_rellenar(p["nombre"][:38], 38), "texto")
                  + c(f" {p['hora_txt']:>5}", "suave")
                  + c(" → ", "tenue") + c(f"{fin:%H:%M}", "suave"))
+        if cfg.get("vivo"):
+            nota = _vivo.nota(p["clave"]) if _vivo else ""
+            L.append(c(f"                  ~ minuto estimado · Scarlet: {nota or 'todavía no lo lee'}"[:A + 2], "tenue"))
     if not n:
         L.append(c("       nada en juego en este momento", "tenue"))
 

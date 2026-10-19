@@ -41,6 +41,8 @@ object Red {
     fun normalizar(texto: String): String {
         var s = texto.trim().trimEnd('/')
         if (s.isBlank()) return ""
+        // La dirección de internet de la PC (túnel): va con https y sin puerto
+        if (!s.startsWith("http") && Regex("(trycloudflare\\.com|lhr\\.life|localhost\\.run)$").containsMatchIn(s)) s = "https://$s"
         if (!s.startsWith("http://") && !s.startsWith("https://")) s = "http://$s"
         val resto = s.substringAfter("://")
         if (!Regex(":\\d+$").containsMatchIn(resto) && s.startsWith("http://")) s += ":$PUERTO"
