@@ -175,7 +175,7 @@ def leer_partidos(ruta):
                     f"El archivo no tiene la pestaña CONSTRUCK (tiene: {', '.join(wb.sheetnames)})"
                 )
             ws = wb["CONSTRUCK"]
-            filas = list(ws.iter_rows(min_row=1, max_col=10, values_only=True))
+            filas = list(ws.iter_rows(min_row=1, max_col=93, values_only=True))
         finally:
             wb.close()
     finally:
@@ -194,6 +194,10 @@ def leer_partidos(ruta):
             break
     if inicio is None:
         inicio = 3   # como está hoy: cabecera en la fila 3, datos desde la 4
+    # Las columnas de la previa se buscan por su NOMBRE en la cabecera (no por posición):
+    # si omega agrega o mueve columnas, esto sigue funcionando.
+    cabecera = [str(x).strip() if x is not None else "" for x in filas[inicio - 1]] if inicio - 1 < len(filas) else []
+    col = {nombre: i for i, nombre in enumerate(cabecera) if nombre}
 
     partidos = []
     for fila in filas[inicio:]:
@@ -218,8 +222,65 @@ def leer_partidos(ruta):
             "gl": gl,
             "gv": gv,
             "suspendido": susp_l or susp_v,
+            "previa": previa_de(fila, col),
         })
     return partidos
+
+
+# Lo que se muestra en el celular como «previa» de cada partido: sale de las
+# columnas que llena omega en CONSTRUCK. (nombre en la app, columna local, columna visitante)
+PREVIA = [
+    ("Posición en la tabla", "posicion_local", "posicion_visitante"),
+    ("Cuota gana (1 / 2)", "1", "2"),
+    ("Cuota empate (X)", "x", None),
+    ("Cuota Under / Over 2.5", "und", "ovr"),
+    ("Ambos marcan: Sí / No", "cuota_gg_si", "cuota_ng_no"),
+    ("Goles a favor (media)", "media_gf_local", "media_gf_visitante"),
+    ("Goles en contra (media)", "media_gc_local", "media_gc_visitante"),
+    ("xG a favor", "xG_L", "xG_V"),
+    ("xG en contra", "xGA_L", "xGA_V"),
+    ("Posesión media", "posesion_media_local", "posesion_media_visitante", "pct"),
+    ("Últimos 5", "ultimos_5_local", "ultimos_5_visitante", "forma"),
+    ("H2H Under / Over 2.5", "h2h_under_2_5", "h2h_over_2_5", "pct"),
+    ("Partidos H2H", "n_h2h", None),
+    ("Goles esperados (λ)", "lambda_L", "lambda_V"),
+    ("λ total", "lambda_total", None),
+    ("Apuesta sugerida BetMines", "apuesta_sugerida_betmines", None),
+    ("Prob. / cuota sugerida", "probabilidad_apuesta_sugerida", "cuota_apuesta_sugerida", "pct1"),
+    ("Confianza", "nivel_confianza", None),
+    ("Estado en omega", "status", None),
+]
+
+
+def _valor(v, fmt=""):
+    if v is None:
+        return ""
+    if fmt == "pct" and isinstance(v, (int, float)) and 0 <= v <= 1:
+        return f"{round(v * 100)} %"
+    if fmt == "forma" and isinstance(v, str):
+        # W/D/L de FootyStats -> G/E/P como los pinta BetMines
+        return " ".join({"W": "G", "D": "E", "L": "P"}.get(x.strip().upper(), x.strip())
+                        for x in v.split(",") if x.strip())
+    if isinstance(v, float):
+        return f"{v:.2f}".rstrip("0").rstrip(".") if abs(v) < 1000 else f"{v:.0f}"
+    return str(v).strip()[:22]
+
+
+def previa_de(fila, col):
+    """[{nombre, local, visitante}] con los datos previos que tenga la fila (los vacíos se saltan)."""
+    salida = []
+    for item in PREVIA:
+        nombre, cl, cv = item[:3]
+        fmt = item[3] if len(item) > 3 else ""
+        il = col.get(cl)
+        iv = col.get(cv) if cv else None
+        a = _valor(fila[il], "pct" if fmt in ("pct", "pct1") else fmt) if il is not None and il < len(fila) else ""
+        b = _valor(fila[iv], "pct" if fmt == "pct" else fmt if fmt != "pct1" else "") \
+            if iv is not None and iv < len(fila) else ""
+        if not a and not b:
+            continue
+        salida.append({"nombre": nombre, "local": a, "visitante": b})
+    return salida
 
 
 # ------------------------------------------------------------------- el envío
@@ -1119,6 +1180,7 @@ def datos_app(cfg, partidos, vivos, fichas_dia, ahora=None):
                       "minuto": v.get("minuto")} if v else None),
             "situacion": situacion(p, v, ahora, cfg["minutos_partido"]) if p["fecha"] == hoy else "por_jugar",
             "ficha": ficha,
+            "previa": p.get("previa") or [],
         })
     return {"v": 2, "hoy": f"{hoy:%d/%m/%Y}", "hora": f"{ahora:%H:%M}",
             "generado": ahora.strftime("%Y-%m-%dT%H:%M:%S"), "duracion": cfg["minutos_partido"],

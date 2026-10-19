@@ -84,7 +84,8 @@ data class Ficha(
     val corners: Int?, val cambios: Int?, val amarillas: Int?, val rojas: Int?,
     val cornersV: Int?, val cambiosV: Int?, val amarillasV: Int?, val rojasV: Int?,
     val datos: List<Dato>,
-    val rojasAnuladas: Int = 0      // rojas que el VAR anuló (ya descontadas de rojas/rojasV)
+    val rojasAnuladas: Int = 0,     // rojas que el VAR anuló (ya descontadas de rojas/rojasV)
+    val previa: List<Dato> = emptyList()   // datos de antes del partido (del Excel de omega)
 ) {
     val hayTarjetas: Boolean get() = amarillas != null || rojas != null
 }
@@ -247,7 +248,23 @@ fun parsearDatos(texto: String?): DatosApp? {
                 dia = o.optInt("dia", 0)
             )
         )
-        val f = o.optJSONObject("ficha") ?: continue
+        val previa = ArrayList<Dato>()
+        val pr = o.optJSONArray("previa")
+        if (pr != null) {
+            for (k in 0 until pr.length()) {
+                val d = pr.optJSONObject(k) ?: continue
+                val n = d.optString("nombre")
+                if (n.isNotBlank()) previa.add(Dato(n, d.optString("local"), d.optString("visitante")))
+            }
+        }
+        val f = o.optJSONObject("ficha")
+        if (f == null) {
+            if (previa.isNotEmpty()) {
+                fichas[nombre] = Ficha(nombre, null, null, null, null, null, null, null,
+                    null, null, null, null, emptyList(), 0, previa)
+            }
+            continue
+        }
         val datos = ArrayList<Dato>()
         val st = f.optJSONArray("stats")
         if (st != null) {
@@ -265,7 +282,8 @@ fun parsearDatos(texto: String?): DatosApp? {
             cornersV = f.entero("cornersV"), cambiosV = f.entero("cambiosV"),
             amarillasV = f.entero("amarillasV"), rojasV = f.entero("rojasV"),
             datos = datos,
-            rojasAnuladas = f.entero("rojasAnuladas") ?: 0
+            rojasAnuladas = f.entero("rojasAnuladas") ?: 0,
+            previa = previa
         )
     }
     return DatosApp(EstadoDia(j.optString("hora"), j.optString("hoy"), partidos), fichas, j.optString("generado"))
