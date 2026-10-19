@@ -1222,7 +1222,7 @@ def datos_app(cfg, partidos, vivos, fichas_dia, ahora=None):
                 "amarillasV": f.get("amarillasV"), "rojasV": rv,
                 "rojasAnuladas": int(f.get("rojasAnuladas") or 0),
                 "stats": [{"nombre": str(x.get("nombre", "")), "local": str(x.get("local", "")),
-                           "visitante": str(x.get("visitante", ""))} for x in (f.get("stats") or [])][:16],
+                           "visitante": str(x.get("visitante", ""))} for x in (f.get("stats") or [])][:30],
                 "eventos": eventos_limpios(f),
             }
         lista.append({
