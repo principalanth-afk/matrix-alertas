@@ -289,6 +289,29 @@ object Panel {
             })
         }
 
+    /** Una fila de la lista de eventos: lo del local | minuto | lo del visitante. */
+    private fun lineaEvento(c: Context, minuto: String, local: String, visitante: String, color: Int): View =
+        LinearLayout(c).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(c, 3), 0, dp(c, 3))
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            addView(texto(c, local, 11.5f, color).apply {
+                gravity = Gravity.START
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            addView(texto(c, minuto, 11.5f, SUAVE, mono = true).apply {
+                gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(dp(c, 52), ViewGroup.LayoutParams.WRAP_CONTENT)
+            })
+            addView(texto(c, visitante, 11.5f, color).apply {
+                gravity = Gravity.END
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            })
+        }
+
     /**
      * Encabezado del partido abierto, como en BetMines: el local a la izquierda,
      * el recuadro del centro con el marcador y el minuto, y el visitante a la
@@ -392,6 +415,34 @@ object Panel {
             })
         }
         for (d in f.datos) addView(lineaDato(c, d.nombre, d.local, d.visitante))
+        if (f.eventos.isNotEmpty()) {
+            // La lista de eventos como en BetMines: lo del local a la izquierda, lo del visitante a la derecha.
+            addView(View(c).apply {
+                setBackgroundColor(0xFF232838.toInt())
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(c, 1)
+                ).apply { topMargin = dp(c, 8); bottomMargin = dp(c, 4) }
+            })
+            addView(texto(c, "EVENTOS", 11f, CIAN, negrita = true).apply {
+                letterSpacing = 0.09f
+                setPadding(0, dp(c, 2), 0, dp(c, 4))
+            })
+            for (e in f.eventos) {
+                val (marca, color) = when (e.tipo) {
+                    "roja" -> "■ roja" to ROJO
+                    "roja2" -> "■ 2ª amarilla" to ROJO
+                    "amarilla" -> "■ amarilla" to AMBAR
+                    "gol" -> "● gol" to VERDE
+                    "autogol" -> "● autogol" to VERDE
+                    "penal fallado" -> "○ penal fallado" to SUAVE
+                    "cambio" -> "⇄ cambio" to SUAVE
+                    "var" -> "VAR" to MAGENTA
+                    else -> e.tipo to SUAVE
+                }
+                val txt = if (e.jugador.isNotBlank()) "$marca  ${e.jugador}" else marca
+                addView(lineaEvento(c, e.minTxt, if (e.lado == "V") "" else txt, if (e.lado == "V") txt else "", color))
+            }
+        }
         if (!f.hayTarjetas && f.datos.isEmpty()) {
             val t = when {
                 enJuego -> "Las estadísticas en vivo todavía no llegan de BetMines." +

@@ -76,6 +76,9 @@ fun situacionDe(p: Partido, ahoraMin: Int, duracion: Int): Situacion = when {
 /** Un dato de la ficha: «Posesión  44 %  56 %». */
 data class Dato(val nombre: String, val local: String, val visitante: String)
 
+/** Un evento de «Datos partido»: 35' roja del visitante (Jugador). lado: "L" local, "V" visitante. */
+data class Evento(val minTxt: String, val tipo: String, val lado: String, val jugador: String)
+
 /** Las estadísticas de un partido, leídas de su página en BetMines. */
 data class Ficha(
     val nombre: String,
@@ -86,7 +89,8 @@ data class Ficha(
     val cornersV: Int?, val cambiosV: Int?, val amarillasV: Int?, val rojasV: Int?,
     val datos: List<Dato>,
     val rojasAnuladas: Int = 0,     // rojas que el VAR anuló (ya descontadas de rojas/rojasV)
-    val previa: List<Dato> = emptyList()   // datos de antes del partido (del Excel de omega)
+    val previa: List<Dato> = emptyList(),  // datos de antes del partido (del Excel de omega)
+    val eventos: List<Evento> = emptyList()
 ) {
     val hayTarjetas: Boolean get() = amarillas != null || rojas != null
 }
@@ -291,7 +295,14 @@ fun parsearDatos(texto: String?): DatosApp? {
             amarillasV = f.entero("amarillasV"), rojasV = f.entero("rojasV"),
             datos = datos,
             rojasAnuladas = f.entero("rojasAnuladas") ?: 0,
-            previa = previa
+            previa = previa,
+            eventos = ArrayList<Evento>().apply {
+                val ev = f.optJSONArray("eventos")
+                if (ev != null) for (k in 0 until ev.length()) {
+                    val e = ev.optJSONObject(k) ?: continue
+                    add(Evento(e.optString("minTxt"), e.optString("tipo"), e.optString("lado"), e.optString("jugador")))
+                }
+            }
         )
     }
     val ev = j.optJSONObject("en_vivo")

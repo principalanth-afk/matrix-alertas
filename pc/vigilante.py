@@ -812,6 +812,29 @@ def avisar_cambios_marcador(cfg, estado, partidos, vivos, simular=False):
     return enviados
 
 
+def eventos_limpios(f):
+    """La lista de eventos de la página (39' amarilla, 35' roja…), lista para la app."""
+    out = []
+    for e in (f.get("eventos") or [])[:40]:
+        if not isinstance(e, dict):
+            continue
+        try:
+            minuto = int(e.get("min"))
+        except (TypeError, ValueError):
+            continue
+        out.append({"min": minuto, "minTxt": str(e.get("minTxt") or f"{minuto}'")[:10],
+                    "tipo": str(e.get("tipo") or "")[:20], "lado": "V" if e.get("lado") == "V" else "L",
+                    "jugador": str(e.get("jugador") or "")[:60]})
+    out.sort(key=lambda e: -e["min"])
+    return out
+
+
+def ultima_roja(f, lado):
+    """El último evento de roja de ese lado (L/V): (jugador, minuto) o None."""
+    rojas = [e for e in eventos_limpios(f) if e["tipo"] in ("roja", "roja2") and e["lado"] == lado]
+    return (rojas[0]["jugador"], rojas[0]["minTxt"], rojas[0]["tipo"]) if rojas else None
+
+
 def rojas_netas(f):
     """
     Las rojas que de verdad cuentan: las del icono menos las que el VAR anuló.
@@ -910,6 +933,10 @@ def avisar_tarjetas_rojas(cfg, estado, partidos, simular=False):
         if f.get("gl") is not None and f.get("gv") is not None:
             marcador = f"\n{f['gl']} - {f['gv']}"
         minuto = f"\nmin {f['minuto']}" if f.get("minuto") else ""
+        ev = ultima_roja(f, "L" if rl > arl else "V")
+        if ev:
+            jug, mtxt, tipo = ev
+            quien = f"{quien}{' · ' + jug if jug else ''} ({mtxt}{', doble amarilla' if tipo == 'roja2' else ''})"
         texto = (f"{nombre}{marcador}{minuto}\nExpulsado: {quien}"
                  f"\nQuedan {11 - rl} contra {11 - rv}"
                  + ("\n(ya la tenía cuando empecé a leer su página)" if ya_tenia else ""))
@@ -1191,6 +1218,7 @@ def datos_app(cfg, partidos, vivos, fichas_dia, ahora=None):
                 "rojasAnuladas": int(f.get("rojasAnuladas") or 0),
                 "stats": [{"nombre": str(x.get("nombre", "")), "local": str(x.get("local", "")),
                            "visitante": str(x.get("visitante", ""))} for x in (f.get("stats") or [])][:16],
+                "eventos": eventos_limpios(f),
             }
         lista.append({
             "clave": p["clave"],
