@@ -500,13 +500,6 @@ def cargar_config():
         s["prioridad_roja"] = "4"
         s["mandar_estado_cada_minutos"] = "15"
         s["version_config"] = "2"
-    # v3 (19/10/2026): «auto» abre la pestaña del marcador en vivo en tu navegador
-    # PREDETERMINADO (Anthony usa Scarlet en Chrome y se abría en Edge). Además la
-    # extensión 3.5 arranca sola aunque esa pestaña no esté.
-    if int(s.get("version_config", "1") or 1) < 3:
-        if sin_tildes(s.get("navegador", "")) in ("", "edge"):
-            s["navegador"] = "auto"
-        s["version_config"] = "3"
 
     with open(CONFIG, "w", encoding="utf-8") as f:
         cp.write(f)
