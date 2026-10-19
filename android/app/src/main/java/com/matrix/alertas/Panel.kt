@@ -118,7 +118,7 @@ object Panel {
         }
 
     /** Fila de un partido que se está jugando. */
-    fun filaEnCurso(c: Context, p: Partido, jugados: Int, duracion: Int): View {
+    fun filaEnCurso(c: Context, p: Partido, jugados: Int, duracion: Int, ficha: Ficha? = null): View {
         val reloj = relojDe(jugados)
         val color = when {
             reloj == "DESC" -> CIAN
@@ -127,8 +127,9 @@ object Panel {
             else -> VERDE
         }
         // Si el minuto viene del marcador en vivo, se usa ese en vez del estimado.
+        // Sin dato real se marca con «~»: es el minuto calculado con la hora de inicio, no el de BetMines.
         val etiqueta = if (p.vivoMinuto != null && p.vivoEstado == "vivo") "${p.vivoMinuto}'"
-        else if (p.vivoEstado == "descanso") "DESC" else reloj
+        else if (p.vivoEstado == "descanso") "DESC" else "~$reloj"
         return fila(c).apply {
             addView(barra(c, jugados, duracion, color))
             addView(pastilla(c, etiqueta, color, 0xFF0B0D12.toInt()).apply {
@@ -148,9 +149,18 @@ object Panel {
                 addView(texto(c, p.nombre, 13.5f, TEXTO))
                 val pie = if (p.hayVivo)
                     "${p.hora}   ${if (p.total <= 2) "va Under 2.5" else "ya es Over 2.5"}   ${p.competicion}"
-                else "${p.hora} → ${finTexto(p, duracion)}   ${p.competicion}"
-                addView(texto(c, pie, 11f, if (p.hayVivo && p.total > 2) ROJO else TENUE))
+                else "${p.hora} · sin marcador real todavía   ${p.competicion}"
+                addView(texto(c, pie, 11f, if (p.hayVivo && p.total > 2) ROJO else if (p.hayVivo) TENUE else AMBAR))
             })
+            // Las rojas, a la vista sin abrir el partido.
+            val rojas = (ficha?.rojas ?: 0) + (ficha?.rojasV ?: 0)
+            if (rojas > 0) {
+                addView(pastilla(c, "■ $rojas", 0xFF3A1D22.toInt(), ROJO).apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply { marginStart = dp(c, 6) }
+                })
+            }
         }
     }
 
@@ -346,7 +356,7 @@ object Panel {
      * El bloque de estadísticas que se abre al tocar un partido.
      * Las tarjetas van primero, y las rojas en rojo: son las que cambian el juego.
      */
-    fun bloqueFicha(c: Context, f: Ficha): View = LinearLayout(c).apply {
+    fun bloqueFicha(c: Context, f: Ficha, enJuego: Boolean = false, nota: String = ""): View = LinearLayout(c).apply {
         orientation = LinearLayout.VERTICAL
         background = GradientDrawable().apply {
             cornerRadius = dp(c, 9).toFloat()
@@ -357,6 +367,12 @@ object Panel {
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply { bottomMargin = dp(c, 8); topMargin = -dp(c, 2) }
 
+        if (f.hayTarjetas && f.minuto != null && f.gl != null && f.gv != null) {
+            addView(texto(c, "EN VIVO DE BETMINES · ${f.gl} - ${f.gv} · min ${f.minuto}", 11f, ROJO, negrita = true).apply {
+                letterSpacing = 0.06f
+                setPadding(0, 0, 0, dp(c, 4))
+            })
+        }
         if (f.hayTarjetas) {
             val rl = f.rojas ?: 0
             val rv = f.rojasV ?: 0
@@ -377,8 +393,13 @@ object Panel {
         }
         for (d in f.datos) addView(lineaDato(c, d.nombre, d.local, d.visitante))
         if (!f.hayTarjetas && f.datos.isEmpty()) {
-            addView(texto(c, if (f.previa.isEmpty()) "Sin estadísticas todavía"
-                             else "Estadísticas en vivo: todavía no hay (salen cuando el partido está en juego)", 12f, TENUE).apply { maxLines = 2 })
+            val t = when {
+                enJuego -> "Las estadísticas en vivo todavía no llegan de BetMines." +
+                        (if (nota.isNotBlank()) "\nScarlet: $nota" else "\nMira el aviso de arriba.")
+                f.previa.isEmpty() -> "Sin estadísticas todavía"
+                else -> "Estadísticas en vivo: salen cuando el partido esté en juego"
+            }
+            addView(texto(c, t, 12f, if (enJuego) AMBAR else TENUE).apply { maxLines = 4 })
         }
         if (f.previa.isNotEmpty()) {
             // Lo de antes del partido, del Excel de omega: posiciones, cuotas, medias, H2H…

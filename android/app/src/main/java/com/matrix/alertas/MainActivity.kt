@@ -235,7 +235,22 @@ class MainActivity : AppCompatActivity() {
         if (enCurso.isEmpty()) {
             contenedor.addView(Panel.aviso(this, "Nada en juego en este momento."))
         } else {
-            for ((p, m) in enCurso) agregarConFicha(p, Panel.filaEnCurso(this, p, m, duracion), fichas)
+            // Si hay partidos en juego sin marcador real, se dice por qué (y qué hacer en la PC).
+            val sinDato = enCurso.count { !it.first.hayVivo }
+            if (directo != null && sinDato > 0) {
+                val e = directo.extension
+                val msg = when {
+                    e == null -> "El marcador real no está llegando: la PC tiene el programa viejo. Actualiza la carpeta pc (MATRIX v3)."
+                    !e.ok && e.hace == null -> "⚠ La extensión Scarlet no le está mandando nada a la PC.\n" +
+                            "En la PC: instala Scarlet 3.5 en el navegador que usas (Chrome) y déjalo abierto. Arranca sola."
+                    !e.ok -> "⚠ La extensión Scarlet dejó de hablar con la PC hace ${(e.hace ?: 0) / 60} min.\n" +
+                            "En la PC: abre ${e.navegador.ifBlank { "el navegador" }} (donde está Scarlet) y déjalo abierto."
+                    else -> "Scarlet está buscando ${if (sinDato == 1) "el partido" else "los $sinDato partidos"} en BetMines" +
+                            (if (e.ultima.isNotBlank()) ":\n${e.ultima}" else ".")
+                }
+                contenedor.addView(Panel.aviso(this, msg, if (e != null && e.ok) Panel.AMBAR else Panel.ROJO).apply { maxLines = 6 })
+            }
+            for ((p, m) in enCurso) agregarConFicha(p, Panel.filaEnCurso(this, p, m, duracion, fichas[p.nombre]), fichas, enJuego = true)
         }
 
         contenedor.addView(Panel.seccion(this, "VIENEN HOY",
@@ -287,7 +302,8 @@ class MainActivity : AppCompatActivity() {
      * Tocar la fila la abre o la cierra.
      */
     private fun agregarConFicha(
-        p: Partido, fila: android.view.View, fichas: Map<String, Ficha>, porJugar: Boolean = false
+        p: Partido, fila: android.view.View, fichas: Map<String, Ficha>, porJugar: Boolean = false,
+        enJuego: Boolean = false
     ) {
         fila.setOnClickListener {
             if (!abiertos.remove(p.nombre)) abiertos.add(p.nombre)
@@ -300,7 +316,9 @@ class MainActivity : AppCompatActivity() {
         contenedor.addView(Panel.cabeceraPartido(this, p))
         contenedor.addView(
             when {
-                f != null -> Panel.bloqueFicha(this, f)
+                f != null -> Panel.bloqueFicha(this, f, enJuego && !f.hayTarjetas && f.datos.isEmpty(), p.nota)
+                enJuego -> Panel.sinFicha(this, "Las estadísticas en vivo todavía no llegan de BetMines." +
+                        if (p.nota.isNotBlank()) "\nScarlet: ${p.nota}" else "")
                 porJugar -> Panel.sinFicha(
                     this, "Empieza a las ${p.hora}${if (p.competicion.isNotBlank()) " · " + p.competicion else ""}.\n" +
                             "Sus estadísticas salen aquí en cuanto arranque."

@@ -29,6 +29,7 @@ import json
 import os
 import subprocess
 import threading
+import urllib.parse
 import time
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -64,7 +65,17 @@ _estado = {
     "filas": 0,
     "progreso": [],
     "navegador_abierto": 0.0,
+    "dueno": "",           # qué navegador (su extensión) está siguiendo los partidos
+    "dueno_t": 0.0,
+    "dueno_nav": "",       # «Chrome» o «Edge», lo dice la extensión
+    "version_ext": "",
+    "notas": {},           # clave -> (hora, lo último que dijo la extensión de ese partido)
 }
+
+# Si Scarlet está en Chrome Y en Edge, los dos querrían seguir los partidos y
+# abrirían pestañas dobles. Sigue el primero que pide; el otro espera. Si el
+# primero se calla este rato, el otro toma el relevo.
+DUENO_SEG = 90
 
 _registro = None           # función para escribir en la consola del vigilante
 
@@ -92,12 +103,14 @@ PAGINA = """<!doctype html><html lang="es"><head><meta charset="utf-8">
  b{color:#e6e8ef}
 </style></head><body><div class="c">
 <h1>MARCADOR EN VIVO</h1>
-<p>Esta pestaña es la que usa la extensión Scarlet (3.4) para seguir los partidos
+<p>Esta pestaña es la que usa la extensión Scarlet (3.5) para seguir los partidos
 de hoy en BetMines y mandarle el marcador y las estadísticas a tu celular.</p>
 <p><b>Déjala abierta</b> y minimizada. Si la cierras, el marcador en vivo deja
 de actualizarse (las alarmas de inicio y de resultado final siguen igual).</p>
 <p>Las pestañas de los partidos en juego se abren en una <b>ventana aparte,
 minimizada</b>: una por partido, solo mientras se juega. Si la ves, no la cierres.</p>
+<p>Desde la 3.5 la extensión arranca sola aunque esta pestaña no esté: basta con
+tener abierto el navegador donde está Scarlet.</p>
 <p>Al Excel no se escribe nada desde aquí.</p>
 </div></body></html>"""
 
@@ -119,7 +132,12 @@ class _H(BaseHTTPRequestHandler):
             pass
 
     def do_GET(self):
-        ruta = self.path.split("?")[0]
+        ruta, _, consulta = self.path.partition("?")
+        params = {}
+        for par in consulta.split("&"):
+            k, _, v = par.partition("=")
+            if k:
+                params[k] = urllib.parse.unquote_plus(v)
         if ruta in ("/vivo", "/vivo/", "/"):
             return self._resp(PAGINA, "text/html; charset=utf-8")
         if ruta == "/vivo/latido":
@@ -128,7 +146,20 @@ class _H(BaseHTTPRequestHandler):
                 _estado["ultimo_aviso"] = time.time()
             return self._resp('{"ok":true}')
         if ruta == "/vivo/partidos":
+            quien = str(params.get("quien") or "")[:40]
             with _lock:
+                ahora = time.time()
+                if quien and _estado["dueno"] and quien != _estado["dueno"] \
+                        and ahora - _estado["dueno_t"] < DUENO_SEG:
+                    # otro navegador ya los está siguiendo: este espera
+                    return self._resp(json.dumps({"otro": True, "segundos": 60, "partidos": [],
+                                                  "dueno": _estado["dueno_nav"]}))
+                if quien:
+                    if quien != _estado["dueno"]:
+                        _estado["dueno"] = quien
+                    _estado["dueno_t"] = ahora
+                    _estado["dueno_nav"] = str(params.get("nav") or "")[:20]
+                    _estado["version_ext"] = str(params.get("v") or "")[:40]
                 _estado["ultimo_aviso"] = time.time()
                 hay = bool(_estado["partidos"])
                 if hay:
@@ -190,6 +221,12 @@ class _H(BaseHTTPRequestHandler):
                     _estado["ultimo_aviso"] = ahora
                     _estado["progreso"].append(f"{datetime.now():%H:%M:%S} {txt}")
                     del _estado["progreso"][:-40]
+                    # «Local vs Visitante: …» se guarda como la nota de ese partido (la app la enseña)
+                    for p in _estado["partidos"]:
+                        pre = f"{p['local']} vs {p['visitante']}: "
+                        if txt.startswith(pre):
+                            _estado["notas"][p["clave"]] = (ahora, txt[len(pre):])
+                            break
             return self._resp('{"ok":true}')
 
         if ruta == "/vivo/diagnostico":
@@ -241,7 +278,8 @@ def detener():
 
 # ------------------------------------------------------------------ navegador
 
-NAVEGADORES = {"edge": "Microsoft Edge", "chrome": "Google Chrome", "firefox": "Firefox"}
+NAVEGADORES = {"auto": "tu navegador predeterminado", "edge": "Microsoft Edge", "chrome": "Google Chrome",
+               "firefox": "Firefox"}
 
 
 def _comandos(nav, url):
@@ -265,15 +303,21 @@ def _comandos(nav, url):
 def abrir_navegador(nav="edge"):
     """Abre la pestaña del modo en vivo en el navegador que tiene la extensión."""
     url = f"http://127.0.0.1:{PUERTO}/vivo"
-    nav = str(nav or "edge").strip().lower()
+    nav = str(nav or "auto").strip().lower()
     if nav not in NAVEGADORES:
-        nav = "edge"
+        nav = "auto"
     if os.name != "nt":
         try:
             subprocess.Popen(["xdg-open", url])
         except OSError:
             pass
         return
+    if nav == "auto":
+        try:
+            os.startfile(url)            # el navegador predeterminado de Windows
+            return
+        except OSError:
+            nav = "edge"
     if nav == "edge":
         try:
             os.startfile("microsoft-edge:" + url)
@@ -417,6 +461,27 @@ def progreso(n=6):
         return list(_estado["progreso"][-n:])
 
 
+def nota(clave, vence=900):
+    """Lo último que la extensión dijo de ese partido («encontré su página», «no la encuentro»…)."""
+    with _lock:
+        n = _estado["notas"].get(clave)
+    if not n or time.time() - n[0] > vence:
+        return ""
+    return n[1]
+
+
+def extension():
+    """Cómo está la extensión: si habla, hace cuánto, en qué navegador y lo último que dijo."""
+    with _lock:
+        t = _estado["ultimo_aviso"]
+        ultima = _estado["progreso"][-1] if _estado["progreso"] else ""
+        return {"ok": bool(t) and time.time() - t < VENCE_SEG,
+                "hace": int(time.time() - t) if t else None,
+                "navegador": _estado["dueno_nav"], "version": _estado["version_ext"],
+                "ultima": ultima[9:] if len(ultima) > 9 else ultima,
+                "siguiendo": len(_estado["partidos"])}
+
+
 def resumen():
     with _lock:
         return {
@@ -441,7 +506,7 @@ def asegurar_navegador(cfg, cada_seg=600):
             return False
         _estado["navegador_abierto"] = time.time()
     _log("Abro la pestaña del marcador en vivo en el navegador.")
-    abrir_navegador(cfg.get("navegador") or "edge")
+    abrir_navegador(cfg.get("navegador") or "auto")
     return True
 
 

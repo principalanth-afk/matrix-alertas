@@ -15,7 +15,8 @@ data class Partido(
     val vivoGv: Int? = null,
     val vivoEstado: String = "", // vivo · descanso · fin · suspendido · "" (sin dato)
     val vivoMinuto: Int? = null,
-    val dia: Int = 0             // 0 = hoy, 1 = mañana
+    val dia: Int = 0,            // 0 = hoy, 1 = mañana
+    val nota: String = ""        // lo último que dijo la extensión de este partido («encontré su página»…)
 ) {
     val hayVivo: Boolean get() = vivoGl != null && vivoGv != null && vivoEstado.isNotEmpty()
 
@@ -200,7 +201,13 @@ fun faltaTexto(minutos: Int): String =
 // ------------------------------------------------ lo que se lee directo de la PC (v1.2)
 
 /** Todo lo que manda servidor_app.py: los partidos del día con su ficha. */
-data class DatosApp(val dia: EstadoDia, val fichas: Map<String, Ficha>, val generado: String)
+data class DatosApp(
+    val dia: EstadoDia, val fichas: Map<String, Ficha>, val generado: String,
+    val extension: Extension? = null
+)
+
+/** Cómo está la extensión Scarlet que lee BetMines en la PC (null: la PC no lo dijo). */
+data class Extension(val ok: Boolean, val hace: Int?, val navegador: String, val ultima: String)
 
 private fun JSONObject.entero(k: String): Int? {
     if (!has(k) || isNull(k)) return null
@@ -245,7 +252,8 @@ fun parsearDatos(texto: String?): DatosApp? {
                 vivoGv = v?.entero("gv"),
                 vivoEstado = v?.optString("estado").orEmpty(),
                 vivoMinuto = v?.entero("minuto"),
-                dia = o.optInt("dia", 0)
+                dia = o.optInt("dia", 0),
+                nota = o.optString("nota")
             )
         )
         val previa = ArrayList<Dato>()
@@ -286,5 +294,10 @@ fun parsearDatos(texto: String?): DatosApp? {
             previa = previa
         )
     }
-    return DatosApp(EstadoDia(j.optString("hora"), j.optString("hoy"), partidos), fichas, j.optString("generado"))
+    val ev = j.optJSONObject("en_vivo")
+    val ext = if (ev == null) null else Extension(
+        ok = ev.optBoolean("ok", false), hace = ev.entero("hace"),
+        navegador = ev.optString("navegador"), ultima = ev.optString("ultima")
+    )
+    return DatosApp(EstadoDia(j.optString("hora"), j.optString("hoy"), partidos), fichas, j.optString("generado"), ext)
 }

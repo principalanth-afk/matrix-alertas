@@ -478,7 +478,7 @@ def cargar_config():
     s.setdefault("scarlet_cada_minutos", "12")
     s.setdefault("segundos_refresco_vivo", "45")
     s.setdefault("fuente_vivo", "navegador")
-    s.setdefault("navegador", "edge")
+    s.setdefault("navegador", "auto")
     s.setdefault("fichas_vivo", "si")
     s.setdefault("mandar_manana", "no")
     s.setdefault("avisar_goles", "si")
@@ -500,6 +500,13 @@ def cargar_config():
         s["prioridad_roja"] = "4"
         s["mandar_estado_cada_minutos"] = "15"
         s["version_config"] = "2"
+    # v3 (19/10/2026): «auto» abre la pestaña del marcador en vivo en tu navegador
+    # PREDETERMINADO (Anthony usa Scarlet en Chrome y se abría en Edge). Además la
+    # extensión 3.5 arranca sola aunque esa pestaña no esté.
+    if int(s.get("version_config", "1") or 1) < 3:
+        if sin_tildes(s.get("navegador", "")) in ("", "edge"):
+            s["navegador"] = "auto"
+        s["version_config"] = "3"
 
     with open(CONFIG, "w", encoding="utf-8") as f:
         cp.write(f)
@@ -525,7 +532,7 @@ def cargar_config():
         "scarlet_cada": float(s["scarlet_cada_minutos"] or 0),
         "refresco_vivo": max(20, int(s["segundos_refresco_vivo"] or 45)),
         "fuente_vivo": "api" if sin_tildes(s["fuente_vivo"]) == "api" else "navegador",
-        "navegador": sin_tildes(s["navegador"]) or "edge",
+        "navegador": sin_tildes(s["navegador"]) or "auto",
         "fichas_vivo": sin_tildes(s["fichas_vivo"]) in ("si", "s", "yes", "true", "1"),
         "mandar_manana": sin_tildes(s["mandar_manana"]) in ("si", "s", "yes", "true", "1"),
         "avisar_goles": sin_tildes(s["avisar_goles"]) in ("si", "s", "yes", "true", "1"),
@@ -735,10 +742,22 @@ def avisar_cambios_marcador(cfg, estado, partidos, vivos, simular=False):
             bajas.pop(clave, None)
             continue
 
-        # La primera vez que se ve un partido no se avisa: no es un gol nuevo,
-        # es que recién empezamos a mirarlo.
+        # La primera vez que se ve un partido no es un gol nuevo: es que recién
+        # empezamos a mirarlo. Pero si ya va con goles y se está jugando, se avisa
+        # una vez (si no, te enteras tarde de que ya no va 0-0).
         if antes_txt is None:
             previos[clave] = ahora_txt
+            p = por_clave.get(clave)
+            total = v["gl"] + v["gv"]
+            if p is not None and v["estado"] in ("vivo", "descanso") and total > 0:
+                minuto = f"min {v['minuto']}" if v.get("minuto") else v["estado"]
+                restante = "va Under 2.5" if total <= 2 else "ya es Over 2.5"
+                if avisar(cfg, f"⚽ YA VA {v['gl']}-{v['gv']}",
+                          f"{p['nombre']}\n{v['gl']} - {v['gv']}  ({minuto})\n{restante}"
+                          f"\n(ya iba así cuando empecé a leer su página)",
+                          cfg["p_gol"], simular, "gol", clave):
+                    enviados += 1
+                    log(f"→ ya va {ahora_txt}: {p['nombre']}")
             continue
 
         p = por_clave.get(clave)
@@ -856,8 +875,15 @@ def avisar_tarjetas_rojas(cfg, estado, partidos, simular=False):
             continue
         antes = previos.get(clave)
         previos[clave] = [rl, rv]
-        if antes is None:                 # primera vez que se ve: no es nueva
-            continue
+        ya_tenia = False
+        if antes is None:
+            # Primera vez que se ve. Si el partido se está jugando y ya hay una roja,
+            # se avisa igual (una sola vez): te tienes que enterar aunque la roja
+            # haya salido antes de que se abriera su página.
+            en_juego = f.get("minuto") is not None or f.get("descanso")
+            if not en_juego or (rl == 0 and rv == 0):
+                continue
+            antes, ya_tenia = [0, 0], True
         try:
             arl, arv = int(antes[0]), int(antes[1])
         except (TypeError, ValueError, IndexError):
@@ -892,7 +918,8 @@ def avisar_tarjetas_rojas(cfg, estado, partidos, simular=False):
             marcador = f"\n{f['gl']} - {f['gv']}"
         minuto = f"\nmin {f['minuto']}" if f.get("minuto") else ""
         texto = (f"{nombre}{marcador}{minuto}\nExpulsado: {quien}"
-                 f"\nQuedan {11 - (rl if rl > arl else rv)} contra 11")
+                 f"\nQuedan {11 - rl} contra {11 - rv}"
+                 + ("\n(ya la tenía cuando empecé a leer su página)" if ya_tenia else ""))
         titulo = "🟥 ROJA" if cuantas == 1 else "🟥 ROJAS"
         if avisar(cfg, titulo, texto, cfg["p_roja"], simular, "roja", clave):
             enviados += 1
@@ -1146,6 +1173,10 @@ def datos_app(cfg, partidos, vivos, fichas_dia, ahora=None):
     hoy = ahora.date()
     manana = hoy + timedelta(days=1)
     lista = []
+    try:
+        import vivo as _vivo
+    except ImportError:
+        _vivo = None
     for p in sorted(partidos, key=lambda x: x["inicio"] or datetime.max):
         if p["fecha"] not in (hoy, manana) or not interesa(cfg, p):
             continue
@@ -1181,6 +1212,7 @@ def datos_app(cfg, partidos, vivos, fichas_dia, ahora=None):
             "situacion": situacion(p, v, ahora, cfg["minutos_partido"]) if p["fecha"] == hoy else "por_jugar",
             "ficha": ficha,
             "previa": p.get("previa") or [],
+            "nota": (_vivo.nota(p["clave"]) if _vivo and p["fecha"] == hoy else ""),
         })
     try:
         import enlace
@@ -1188,9 +1220,10 @@ def datos_app(cfg, partidos, vivos, fichas_dia, ahora=None):
         enlaces = {"lan": e.get("lan", ""), "publico": e.get("publico", "")}
     except ImportError:
         enlaces = {}
-    return {"v": 2, "enlaces": enlaces, "hoy": f"{hoy:%d/%m/%Y}", "hora": f"{ahora:%H:%M}",
+    en_vivo = _vivo.extension() if (_vivo and cfg.get("vivo")) else None
+    return {"v": 3, "enlaces": enlaces, "hoy": f"{hoy:%d/%m/%Y}", "hora": f"{ahora:%H:%M}",
             "generado": ahora.strftime("%Y-%m-%dT%H:%M:%S"), "duracion": cfg["minutos_partido"],
-            "partidos": lista}
+            "en_vivo": en_vivo, "partidos": lista}
 
 
 def publicar_app(cfg, estado, partidos, vivos):
@@ -1580,6 +1613,18 @@ def linea_app(cfg):
             pass
     else:
         partes.append("app: solo por ntfy")
+    if cfg.get("vivo"):
+        try:
+            import vivo
+            e = vivo.extension()
+            if e["ok"]:
+                partes.append(f"Scarlet en vivo: conectada{(' en ' + e['navegador']) if e['navegador'] else ''}")
+            elif e["hace"] is None:
+                partes.append("Scarlet en vivo: todavía no habla (¿está la 3.5 en tu navegador?)")
+            else:
+                partes.append(f"Scarlet en vivo: callada hace {e['hace'] // 60} min")
+        except ImportError:
+            pass
     partes.append(f"ntfy hoy: {cupo['n']}/250")
     return "   ·   ".join(partes)
 
