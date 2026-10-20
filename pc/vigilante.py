@@ -313,8 +313,9 @@ def enviar(cfg, titulo, texto, prioridad=5, simular=False, esencial=False):
         return False
     limite = cfg.get("limite_ntfy", 230)
     if cupo["n"] >= (245 if esencial else limite):
-        if cupo.get("avisado") != ("e" if esencial else "n"):
-            cupo["avisado"] = "e" if esencial else "n"
+        marca = "e" if esencial else "n"
+        if marca not in str(cupo.get("avisado") or ""):
+            cupo["avisado"] = str(cupo.get("avisado") or "") + marca
             log(f"Cupo de ntfy de hoy casi agotado ({cupo['n']} mensajes): "
                 + ("ya no salen ni las alarmas por ntfy (la app las sigue recibiendo directo)." if esencial
                    else "el resumen ya no va por ntfy; las alarmas sí."))
@@ -490,7 +491,7 @@ def cargar_config():
     s.setdefault("enlace_directo", "si")
     s.setdefault("puerto_app", "8782")
     s.setdefault("tunel", "cloudflared")
-    s.setdefault("limite_ntfy_dia", "230")
+    s.setdefault("limite_ntfy_dia", "200")
     s.setdefault("max_pestanas", "8")
 
     # v2 (19/10/2026): el gol y la roja pasan a ser ALARMA (pedido de Anthony) y el
@@ -505,6 +506,12 @@ def cargar_config():
         if str(s.get("segundos_refresco_vivo", "")).strip() in ("", "45"):
             s["segundos_refresco_vivo"] = "20"
         s["version_config"] = "3"
+    # v4 (19/10/2026): el resumen por ntfy para en 200 mensajes; los últimos 45 del día quedan para la
+    # dirección de la PC y las alarmas (el 19/10 se agotaron los 250 y el celular perdió la dirección).
+    if int(s.get("version_config", "1") or 1) < 4:
+        if str(s.get("limite_ntfy_dia", "")).strip() in ("", "230"):
+            s["limite_ntfy_dia"] = "200"
+        s["version_config"] = "4"
 
     with open(CONFIG, "w", encoding="utf-8") as f:
         cp.write(f)
@@ -542,7 +549,7 @@ def cargar_config():
         "enlace_directo": sin_tildes(s["enlace_directo"]) in ("si", "s", "yes", "true", "1"),
         "puerto_app": int(s["puerto_app"] or 8782),
         "tunel": sin_tildes(s["tunel"]) or "cloudflared",
-        "limite_ntfy": max(20, min(245, int(s["limite_ntfy_dia"] or 230))),
+        "limite_ntfy": max(20, min(245, int(s["limite_ntfy_dia"] or 200))),
         "max_pestanas": max(1, min(20, int(s["max_pestanas"] or 8))),
         "canal_recien_creado": creado,
     }
@@ -589,7 +596,7 @@ def texto_resultado(p):
 _SCARLET = {"ultimo": 0.0, "proceso": None}
 
 
-def lanzar_scarlet(cfg, pendientes):
+def lanzar_scarlet(cfg, pendientes, forzar=False):
     """
     Le pide a tu Scarlet Resultados que busque YA los partidos de hoy que ya
     terminaron y siguen sin GL/GV. Solo se llama cuando de verdad hay alguno
@@ -617,7 +624,8 @@ def lanzar_scarlet(cfg, pendientes):
             return False
     except OSError:
         pass
-    if time.time() - _SCARLET["ultimo"] < cfg["scarlet_cada"] * 60:
+    # Un partido que BetMines acaba de dar por terminado (FT) no espera los minutos de siempre.
+    if not forzar and time.time() - _SCARLET["ultimo"] < cfg["scarlet_cada"] * 60:
         return False
 
     try:
@@ -627,7 +635,8 @@ def lanzar_scarlet(cfg, pendientes):
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
         _SCARLET["ultimo"] = time.time()
-        log(f"Scarlet: buscando el resultado de {len(pendientes)} partido(s) que ya terminaron.")
+        log(f"Scarlet: buscando el resultado de {len(pendientes)} partido(s) que ya terminaron"
+            + (" (BetMines ya dio el final)" if forzar else "") + ".")
         return True
     except Exception as e:
         log(f"No se pudo lanzar Scarlet ({type(e).__name__}: {e}). Revisa scarlet_carpeta en config.ini.")
@@ -838,6 +847,33 @@ def ultima_roja(f, lado):
     """El último evento de roja de ese lado (L/V): (jugador, minuto) o None."""
     rojas = [e for e in eventos_limpios(f) if e["tipo"] in ("roja", "roja2") and e["lado"] == lado]
     return (rojas[0]["jugador"], rojas[0]["minTxt"], rojas[0]["tipo"]) if rojas else None
+
+
+def guardar_finales(estado, partidos, vivos):
+    """Guarda (todo el día) el marcador final que dio BetMines. Devuelve cuántos son nuevos."""
+    hoy = datetime.now().strftime("%Y-%m-%d")
+    fin = estado.setdefault("finales_vivo", {})
+    for f in list(fin):
+        if f != hoy:
+            fin.pop(f, None)
+    dia = fin.setdefault(hoy, {})
+    nuevos = 0
+    for clave, v in (vivos or {}).items():
+        if v.get("estado") == "fin" and v.get("gl") is not None and v.get("gv") is not None:
+            if dia.get(clave) != [v["gl"], v["gv"]]:
+                dia[clave] = [v["gl"], v["gv"]]
+                nuevos += 1
+    return nuevos
+
+
+def vivos_con_finales(estado, vivos):
+    """Los marcadores en vivo más los finales guardados de hoy (que ya no llegan de la extensión)."""
+    hoy = datetime.now().strftime("%Y-%m-%d")
+    salida = dict(vivos or {})
+    for clave, (gl, gv) in ((estado.get("finales_vivo") or {}).get(hoy) or {}).items():
+        if clave not in salida:
+            salida[clave] = {"gl": gl, "gv": gv, "estado": "fin", "minuto": None}
+    return salida
 
 
 def rojas_netas(f):
@@ -1326,7 +1362,11 @@ def una_vuelta(cfg, estado, simular=False):
                     enviados += 1
                     log(f"→ suspendido: {p['nombre']}")
             elif p["gl"] is not None and p["gv"] is not None and not ya:
-                if avisar(cfg, "🏁 FINAL", texto_resultado(p), cfg["p_resultado"], simular, "final", p["clave"]):
+                if (estado.get("final_vivo_avisado") or {}).get(p["clave"]) == [p["gl"], p["gv"]]:
+                    # ya se avisó con el final de BetMines y el Excel dice lo mismo: no se repite
+                    estado["resultado"][p["clave"]] = ahora.isoformat(timespec="seconds")
+                    log(f"✓ cargado en el Excel: {p['nombre']} {p['gl']}-{p['gv']}")
+                elif avisar(cfg, "🏁 FINAL", texto_resultado(p), cfg["p_resultado"], simular, "final", p["clave"]):
                     estado["resultado"][p["clave"]] = ahora.isoformat(timespec="seconds")
                     enviados += 1
                     log(f"→ resultado: {p['nombre']} {p['gl']}-{p['gv']}")
@@ -1353,6 +1393,40 @@ def una_vuelta(cfg, estado, simular=False):
     # Una sola consulta de marcadores por vuelta: sirve para avisar los goles
     # y para el resumen que ve el celular.
     vivos = marcadores_vivos(cfg, partidos)
+    # El final que dio BetMines se guarda todo el día: el partido pasa a FINALIZADOS en el acto (aunque el
+    # Excel todavía no lo tenga) y se le pide a Scarlet que lo cargue YA, sin esperar las 2 h 30.
+    nuevos_finales = guardar_finales(estado, partidos, vivos)
+    vivos = vivos_con_finales(estado, vivos)
+    sin_cargar = [p for p in partidos if p["fecha"] == hoy and p["gl"] is None and not p["suspendido"]
+                  and (vivos.get(p["clave"]) or {}).get("estado") == "fin"]
+    if sin_cargar and not simular:
+        pedidos = estado.setdefault("scarlet_pedidos", {})
+        forzar = any(p["clave"] not in pedidos for p in sin_cargar)
+        todos = sin_cargar + [p for p in pendientes_viejos if p not in sin_cargar]
+        if lanzar_scarlet(cfg, todos, forzar=forzar):
+            for p in sin_cargar:
+                pedidos[p["clave"]] = ahora.isoformat(timespec="seconds")
+        elif forzar and not cfg["scarlet"] and not _SCARLET.get("sin_carpeta_avisado"):
+            _SCARLET["sin_carpeta_avisado"] = True
+            log("BetMines ya dio el final, pero en config.ini falta scarlet_carpeta: el resultado no se carga solo en el Excel.")
+    # 🏁 FINAL en cuanto BetMines lo da (no hay que esperar a que se cargue en el Excel)
+    avisados = estado.setdefault("final_vivo_avisado", {})
+    for p in sin_cargar:
+        v = vivos[p["clave"]]
+        if p["clave"] in avisados or p["clave"] in estado["resultado"] or not cfg["avisar_resultado"]:
+            continue
+        q = dict(p, gl=v["gl"], gv=v["gv"])
+        if avisar(cfg, "🏁 FINAL", texto_resultado(q) + "\n(BetMines · Scarlet lo carga en el Excel)",
+                  cfg["p_resultado"], simular, "final", p["clave"]):
+            avisados[p["clave"]] = [v["gl"], v["gv"]]
+            enviados += 1
+            nuevos_finales += 1
+            log(f"→ final (BetMines): {p['nombre']} {v['gl']}-{v['gv']}")
+    if len(avisados) > 300:
+        for k in list(avisados)[:-150]:
+            avisados.pop(k, None)
+    if nuevos_finales:
+        guardar_estado(estado)
     if avisar_cambios_marcador(cfg, estado, partidos, vivos, simular):
         guardar_estado(estado)
     if avisar_tarjetas_rojas(cfg, estado, partidos, simular):
@@ -1509,7 +1583,7 @@ def panel(cfg, partidos, estado, ahora=None):
     if cfg.get("vivo"):
         try:
             import vivo as _vivo
-            vivos = _vivo.marcadores(cfg, hoy_lista)
+            vivos = vivos_con_finales(estado, _vivo.marcadores(cfg, hoy_lista))
             fichas_v = _vivo.fichas()
         except Exception:
             _vivo = None
@@ -1520,6 +1594,11 @@ def panel(cfg, partidos, estado, ahora=None):
         if v and v.get("estado") in ("vivo", "descanso") and est in ("esperando", "por_jugar") \
                 and p["gl"] is None and p["inicio"]:
             est, dato = "en_curso", int((ahora - p["inicio"]).total_seconds() // 60)
+        elif v and v.get("estado") == "fin" and p["gl"] is None and not p["suspendido"] \
+                and v.get("gl") is not None:
+            # terminado según BetMines: va a finalizados con ese marcador (y «sin cargar»)
+            p = dict(p, gl=v["gl"], gv=v["gv"], sin_cargar=True)
+            est = "listo"
         grupos[est].append((p, dato))
     grupos["en_curso"].sort(key=lambda t: -(t[1] or 0))
     grupos["por_jugar"].sort(key=lambda t: t[1] or 0)
@@ -1572,8 +1651,8 @@ def panel(cfg, partidos, estado, ahora=None):
                  + c(f" {p['hora_txt']:>5}", "suave")
                  + c(" → ", "tenue") + c(f"{fin:%H:%M}", "suave"))
         if cfg.get("vivo"):
-            nota = _vivo.nota(p["clave"]) if _vivo else ""
-            L.append(c(f"                  ~ minuto estimado · Scarlet: {nota or 'todavía no lo lee'}"[:A + 2], "tenue"))
+            nota = _vivo.nota(p["clave"], con_hora=True) if _vivo else ""
+            L.append(c(f"                  ~ minuto estimado · Scarlet {nota or ': todavía no lo lee'}"[:A + 2], "tenue"))
     if not n:
         L.append(c("       nada en juego en este momento", "tenue"))
 
@@ -1621,7 +1700,8 @@ def panel(cfg, partidos, estado, ahora=None):
                 else c(" over 2.5  ", "texto", False, "rojo")
             L.append("     " + marcador + " " + sello + "  "
                      + c(_rellenar(p["nombre"][:36], 36), "texto")
-                     + c(f" {p['hora_txt']:>5}", "tenue"))
+                     + c(f" {p['hora_txt']:>5}", "tenue")
+                     + (c("  BetMines · falta en el Excel", "ambar") if p.get("sin_cargar") else ""))
         if grupos["listo"]:
             L.append("     " + c(f"{unders} de {len(grupos['listo'])} terminaron Under 2.5 "
                                  f"({unders/len(grupos['listo']):.0%})", "suave"))

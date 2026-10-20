@@ -103,7 +103,7 @@ PAGINA = """<!doctype html><html lang="es"><head><meta charset="utf-8">
  b{color:#e6e8ef}
 </style></head><body><div class="c">
 <h1>MARCADOR EN VIVO</h1>
-<p>Esta pestaña es la que usa la extensión Scarlet (3.5) para seguir los partidos
+<p>Esta pestaña es la que usa la extensión Scarlet (3.6) para seguir los partidos
 de hoy en BetMines y mandarle el marcador y las estadísticas a tu celular.</p>
 <p><b>Déjala abierta</b> y minimizada. Si la cierras, el marcador en vivo deja
 de actualizarse (las alarmas de inicio y de resultado final siguen igual).</p>
@@ -227,14 +227,17 @@ class _H(BaseHTTPRequestHandler):
                         if txt.startswith(pre):
                             _estado["notas"][p["clave"]] = (ahora, txt[len(pre):])
                             break
+                _anotar(txt)
             return self._resp('{"ok":true}')
 
         if ruta == "/vivo/diagnostico":
             try:
                 ruta_d = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                       "diagnostico_vivo.txt")
-                with open(ruta_d, "w", encoding="utf-8") as f:
-                    f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S}\n")
+                if os.path.exists(ruta_d) and os.path.getsize(ruta_d) > 600_000:
+                    os.replace(ruta_d, ruta_d + ".anterior")
+                with open(ruta_d, "a", encoding="utf-8") as f:
+                    f.write(f"\n\n######## {datetime.now():%Y-%m-%d %H:%M:%S}\n")
                     f.write(f"=== {datos.get('nombre') or ''}\n")
                     f.write(str(datos.get("texto") or "")[:20000])
                 _log("   (guardé diagnostico_vivo.txt: una página que no supe leer)")
@@ -243,6 +246,20 @@ class _H(BaseHTTPRequestHandler):
             return self._resp('{"ok":true}')
 
         return self._resp('{"error":"no existe"}', codigo=404)
+
+
+REGISTRO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vivo_registro.txt")
+
+
+def _anotar(txt):
+    """Todo lo que cuenta la extensión queda en vivo_registro.txt (para revisar qué pasó con un partido)."""
+    try:
+        if os.path.exists(REGISTRO) and os.path.getsize(REGISTRO) > 1_500_000:
+            os.replace(REGISTRO, REGISTRO + ".anterior")
+        with open(REGISTRO, "a", encoding="utf-8") as f:
+            f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S}  {txt}\n")
+    except OSError:
+        pass
 
 
 def iniciar(registro=None, puerto=PUERTO):
@@ -461,13 +478,13 @@ def progreso(n=6):
         return list(_estado["progreso"][-n:])
 
 
-def nota(clave, vence=900):
-    """Lo último que la extensión dijo de ese partido («encontré su página», «no la encuentro»…)."""
+def nota(clave, vence=900, con_hora=False):
+    """Lo último que la extensión dijo de ese partido («encontré su página», «leí 1-0 min 23»…)."""
     with _lock:
         n = _estado["notas"].get(clave)
     if not n or time.time() - n[0] > vence:
         return ""
-    return n[1]
+    return f"{datetime.fromtimestamp(n[0]):%H:%M:%S}: {n[1]}" if con_hora else n[1]
 
 
 def extension():

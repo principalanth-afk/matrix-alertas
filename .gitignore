@@ -16,3 +16,5 @@ build/
 local.properties
 .idea/
 pc/cloudflared.log
+pc/vivo_registro.txt*
+pc/diagnostico_vivo.txt.anterior

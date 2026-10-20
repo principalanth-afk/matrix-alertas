@@ -437,6 +437,8 @@ object Panel {
                     "penal fallado" -> "○ penal fallado" to SUAVE
                     "cambio" -> "⇄ cambio" to SUAVE
                     "var" -> "VAR" to MAGENTA
+                    "gol anulado" -> "✕ gol anulado (VAR)" to MAGENTA
+                    "roja anulada" -> "✕ roja anulada (VAR)" to MAGENTA
                     else -> e.tipo to SUAVE
                 }
                 val txt = if (e.jugador.isNotBlank()) "$marca  ${e.jugador}" else marca
