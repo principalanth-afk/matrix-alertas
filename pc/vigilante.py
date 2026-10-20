@@ -679,7 +679,8 @@ def marcadores_vivos(cfg, partidos):
             return {}
         vivo.fijar_partidos(partidos, segundos=cfg.get("refresco_vivo", 30),
                             fichas=cfg.get("fichas_vivo", True),
-                            max_pestanas=cfg.get("max_pestanas", 8))
+                            max_pestanas=cfg.get("max_pestanas", 8),
+                            ya_terminados=set(_FINALES_HOY))
         vivo.asegurar_navegador(cfg)
         return vivo.marcadores(cfg, partidos)
 
@@ -849,6 +850,9 @@ def ultima_roja(f, lado):
     return (rojas[0]["jugador"], rojas[0]["minTxt"], rojas[0]["tipo"]) if rojas else None
 
 
+_FINALES_HOY = {}          # clave -> [gl, gv] de hoy (lo llena guardar_finales; lo usa el plan de la extensión)
+
+
 def guardar_finales(estado, partidos, vivos):
     """Guarda (todo el día) el marcador final que dio BetMines. Devuelve cuántos son nuevos."""
     hoy = datetime.now().strftime("%Y-%m-%d")
@@ -863,6 +867,8 @@ def guardar_finales(estado, partidos, vivos):
             if dia.get(clave) != [v["gl"], v["gv"]]:
                 dia[clave] = [v["gl"], v["gv"]]
                 nuevos += 1
+    _FINALES_HOY.clear()
+    _FINALES_HOY.update(dia)
     return nuevos
 
 

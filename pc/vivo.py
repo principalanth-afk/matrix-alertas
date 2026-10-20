@@ -39,7 +39,7 @@ PUERTO = 8781
 # Cuánto antes de la hora de inicio y cuánto después del final se sigue
 # mirando un partido. Generoso por los retrasos y el descuento.
 ANTES_MIN = 10
-DESPUES_MIN = 175
+DESPUES_MIN = 240          # (19/10) 175 se quedaba corto: un partido terminado sin final leído salía de la lista
 
 # Si la extensión deja de dar señales, el marcador se da por viejo y se deja
 # de enseñar: mejor sin marcador que con uno congelado de hace media hora.
@@ -103,7 +103,7 @@ PAGINA = """<!doctype html><html lang="es"><head><meta charset="utf-8">
  b{color:#e6e8ef}
 </style></head><body><div class="c">
 <h1>MARCADOR EN VIVO</h1>
-<p>Esta pestaña es la que usa la extensión Scarlet (3.6) para seguir los partidos
+<p>Esta pestaña es la que usa la extensión Scarlet (3.7) para seguir los partidos
 de hoy en BetMines y mandarle el marcador y las estadísticas a tu celular.</p>
 <p><b>Déjala abierta</b> y minimizada. Si la cierras, el marcador en vivo deja
 de actualizarse (las alarmas de inicio y de resultado final siguen igual).</p>
@@ -391,7 +391,7 @@ def _en_ventana(ini, ahora_min):
     return ini - ANTES_MIN <= ahora_min <= ini + DESPUES_MIN
 
 
-def fijar_partidos(partidos, hoy=None, segundos=30, fichas=True, max_pestanas=8):
+def fijar_partidos(partidos, hoy=None, segundos=30, fichas=True, max_pestanas=8, ya_terminados=()):
     """
     Le dice a la extensión qué partidos mirar: los de hoy que están dentro de
     su ventana de juego y a los que el Excel todavía no les puso resultado.
@@ -407,6 +407,8 @@ def fijar_partidos(partidos, hoy=None, segundos=30, fichas=True, max_pestanas=8)
             continue                                   # ya tiene resultado cargado
         if p.get("suspendido"):
             continue
+        if p.get("clave") in ya_terminados:
+            continue                                   # BetMines ya dio su final: no hace falta mirarlo más
         ini = _minutos_de(p)
         if not _en_ventana(ini, ahora_min):
             continue
